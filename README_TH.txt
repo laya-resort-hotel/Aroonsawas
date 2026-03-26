@@ -47,3 +47,7 @@ Auto-login จะทำงานได้เมื่อ:
 - ระบบใหม่นี้ **ไม่ใช้ collection `vouchers` เดิม**
 - แต่ยังอ่าน `users` ของเดิมเพื่อเอา role เดิมมาใช้
 - ถ้าต้องการแยก role ของระบบขายในอนาคต ค่อยเพิ่ม collection เช่น `sale_users` ได้ภายหลัง
+
+
+Free Voucher URL (default back link):
+https://laya-resort-hotel.github.io/aroonsawat/dashboard.html

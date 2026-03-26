@@ -8,10 +8,11 @@
   await mountShell('dashboard.html','Dashboard','ยอดขายและยอดใช้ของ Sales Voucher v6 เท่านั้น ไม่ปนกับ Free Voucher เดิม');
   const el = document.getElementById('pageContent');
   el.innerHTML = `<div class="notice">กำลังโหลดข้อมูล...</div>`;
-  const data = await dashboardData();
-  const { stats, byOutlet, byStaff, recentTransactions, lowBalanceCards, nearExpiryCards, recentlyEmptied, trendDays } = data;
-  const maxBar = Math.max(1, ...trendDays.flatMap(d => [d.sales, d.debit]));
-  el.innerHTML = `
+  try {
+    const data = await dashboardData();
+    const { stats, byOutlet, byStaff, recentTransactions, lowBalanceCards, nearExpiryCards, recentlyEmptied, trendDays } = data;
+    const maxBar = Math.max(1, ...trendDays.flatMap(d => [d.sales, d.debit]));
+    el.innerHTML = `
     <div class="kpi-grid">
       <div class="card kpi"><div class="metric"><div class="label">Sales Today</div><div class="value">${formatMoney(stats.salesToday)}</div></div></div>
       <div class="card kpi"><div class="metric"><div class="label">Cards Sold Today</div><div class="value">${stats.cardsSoldToday}</div></div></div>
@@ -36,5 +37,8 @@
       <div class="card"><h3>Cards Near Expiry</h3><div class="list">${nearExpiryCards.length ? nearExpiryCards.map(c => `<a class="list-item" href="card-detail.html?id=${c.id}"><div class="stat-line"><span>${escapeHtml(c.card_label)}</span><strong>${escapeHtml(toDateValue(c.valid_until) || '-')}</strong></div></a>`).join('') : '<div class="helper">No expiry dates found.</div>'}</div></div>
     </div>
     <div class="card" style="margin-top:16px"><h3>Recently Emptied Cards</h3><div class="list">${recentlyEmptied.length ? recentlyEmptied.map(c => `<a class="list-item" href="card-detail.html?id=${c.id}"><div class="stat-line"><span>${escapeHtml(c.card_label)} / ${escapeHtml(c.card_code)}</span><strong>${toDateTimeText(c.last_used_at)}</strong></div></a>`).join('') : '<div class="helper">No empty cards yet.</div>'}</div></div>`;
+  } catch (err) {
+    el.innerHTML = `<div class="card"><h3>Dashboard load failed</h3><div class="helper">${escapeHtml(err.message || 'Unknown error')}</div><div class="helper" style="margin-top:8px">ตรวจ Firestore Rules และ collection sale_cards / sale_card_transactions / sale_settings</div></div>`;
+  }
 </script>
 </body></html>

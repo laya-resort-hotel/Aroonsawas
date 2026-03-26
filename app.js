@@ -9,13 +9,30 @@ import {
   addDoc,
   query,
   where,
-  orderBy,
   limit,
   serverTimestamp,
-  runTransaction,
-  Timestamp,
-  deleteField
+  runTransaction
 } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+
+const DEFAULT_SETTINGS = {
+  companyName: appConfig.companyName,
+  currency: "THB",
+  outlets: ["Aroonsawat", "Starbucks Counter", "Lobby Lounge"],
+  defaultValidityDays: 180,
+  freeVoucherUrl: appConfig.backToFreeVoucherUrl,
+  saleCardRepoUrl: appConfig.saleCardRepoUrl
+};
+
+function tsValue(v) {
+  if (!v) return 0;
+  if (typeof v === "string") {
+    const d = Date.parse(v);
+    return Number.isNaN(d) ? 0 : d;
+  }
+  if (typeof v?.seconds === "number") return v.seconds * 1000;
+  if (v?.toDate) return v.toDate().getTime();
+  return 0;
+}
 
 export function formatMoney(v) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "THB", maximumFractionDigits: 0 }).format(Number(v || 0));
@@ -47,6 +64,17 @@ export function todayBusinessDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
+export function parseCardCode(raw = "") {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    return url.searchParams.get("code") || url.searchParams.get("card") || url.pathname.split("/").filter(Boolean).pop() || value;
+  } catch {
+    return value.replace(/^card:/i, "").trim();
+  }
+}
+
 function cardFromSnap(snap) {
   return { id: snap.id, ...snap.data() };
 }
@@ -58,20 +86,9 @@ export async function getSettings() {
   const ref = doc(db, saleCardCollections.settings, "app");
   const snap = await getDoc(ref);
   if (!snap.exists()) {
-    const defaults = {
-      companyName: appConfig.companyName,
-      currency: "THB",
-      outlets: ["Aroonsawat", "Starbucks Counter", "Lobby Lounge"],
-      defaultValidityDays: 180,
-      freeVoucherUrl: appConfig.backToFreeVoucherUrl,
-      saleCardRepoUrl: appConfig.saleCardRepoUrl,
-      created_at: serverTimestamp(),
-      updated_at: serverTimestamp()
-    };
-    await setDoc(ref, defaults, { merge: true });
-    return { ...defaults, created_at: null, updated_at: null };
+    return { ...DEFAULT_SETTINGS };
   }
-  return snap.data();
+  return { ...DEFAULT_SETTINGS, ...snap.data() };
 }
 
 export async function saveSettings(data) {
@@ -79,7 +96,7 @@ export async function saveSettings(data) {
   await setDoc(ref, {
     companyName: data.companyName,
     currency: data.currency || "THB",
-    outlets: data.outlets || [],
+    outlets: Array.isArray(data.outlets) ? data.outlets.filter(Boolean) : DEFAULT_SETTINGS.outlets,
     defaultValidityDays: Number(data.defaultValidityDays || 180),
     freeVoucherUrl: data.freeVoucherUrl || appConfig.backToFreeVoucherUrl,
     saleCardRepoUrl: data.saleCardRepoUrl || appConfig.saleCardRepoUrl,
@@ -89,12 +106,13 @@ export async function saveSettings(data) {
 
 export async function listCards(filters = {}) {
   const snap = await getDocs(collection(db, saleCardCollections.cards));
-  let rows = snap.docs.map(cardFromSnap).sort((a, b) => String(b.created_at?.seconds || b.created_at || "").localeCompare(String(a.created_at?.seconds || a.created_at || "")));
+  let rows = snap.docs.map(cardFromSnap).sort((a, b) => tsValue(b.updated_at || b.created_at) - tsValue(a.updated_at || a.created_at));
   if (filters.query) {
     const needle = filters.query.toLowerCase();
     rows = rows.filter(c => [c.card_code, c.card_label, c.card_serial, c.notes].join(" ").toLowerCase().includes(needle));
   }
-  if (filters.outlet) rows = rows.filter(c => c.outlet_scope === filters.outlet);
+  if (filters.status) rows = rows.filter(c => c.status === filters.status);
+  if (filters.outlet) rows = rows.filter(c => String(c.outlet_scope || "").toLowerCase().includes(String(filters.outlet).toLowerCase()));
   return rows;
 }
 
@@ -105,8 +123,8 @@ export async function getCardById(id) {
 }
 
 export async function getCardByCode(code) {
-  if (!code) return null;
-  const trimmed = code.trim();
+  const trimmed = parseCardCode(code);
+  if (!trimmed) return null;
   const cardsRef = collection(db, saleCardCollections.cards);
   for (const field of ["card_code", "card_label", "card_serial"]) {
     const snap = await getDocs(query(cardsRef, where(field, "==", trimmed), limit(1)));
@@ -116,14 +134,21 @@ export async function getCardByCode(code) {
 }
 
 export async function createCard(data, actor) {
-  const existing = await getCardByCode(data.card_code);
+  const code = parseCardCode(data.card_code);
+  if (!code) throw new Error("Card code is required.");
+  const existing = await getCardByCode(code);
   if (existing) throw new Error("Card code already exists.");
+  const faceValue = Number(data.face_value);
+  const soldPrice = Number(data.sold_price);
+  if (!(faceValue > 0)) throw new Error("Face value must be more than 0.");
+  if (!(soldPrice > 0)) throw new Error("Sold price must be more than 0.");
+  const actorName = actor.profile?.name || actor.profile?.employee_id || actor.user.email || "User";
   const payload = {
-    card_code: data.card_code.trim(),
+    card_code: code,
     card_label: data.card_label.trim(),
     card_serial: data.card_serial?.trim() || "",
-    face_value: Number(data.face_value),
-    sold_price: Number(data.sold_price),
+    face_value: faceValue,
+    sold_price: soldPrice,
     remaining_balance: 0,
     currency: "THB",
     status: "draft",
@@ -131,7 +156,7 @@ export async function createCard(data, actor) {
     valid_until: data.valid_until || "",
     notes: data.notes?.trim() || "",
     created_by_uid: actor.user.uid,
-    created_by_name: actor.profile?.name || actor.profile?.employee_id || actor.user.email || "User",
+    created_by_name: actorName,
     created_at: serverTimestamp(),
     updated_at: serverTimestamp()
   };
@@ -175,8 +200,20 @@ export async function activateAndSell(cardId, soldPrice, outlet, note, actor) {
       created_at: serverTimestamp(),
       voided: false
     });
-    return { id: snap.id, ...card, sold_price: actualSoldPrice, remaining_balance: Number(card.face_value), status: "active" };
+    return {
+      id: snap.id,
+      ...card,
+      sold_price: actualSoldPrice,
+      remaining_balance: Number(card.face_value),
+      status: "active"
+    };
   });
+}
+
+export function isExpiredCard(card) {
+  if (!card?.valid_until) return false;
+  const today = todayBusinessDate();
+  return String(card.valid_until).slice(0, 10) < today;
 }
 
 export async function deductBalance(cardId, amount, outlet, note, actor) {
@@ -189,6 +226,7 @@ export async function deductBalance(cardId, amount, outlet, note, actor) {
     if (!snap.exists()) throw new Error("Card not found.");
     const card = snap.data();
     if (card.status !== "active") throw new Error("Only active cards can be deducted.");
+    if (isExpiredCard(card)) throw new Error("This card has expired.");
     const before = Number(card.remaining_balance || 0);
     if (amt > before) throw new Error("Insufficient balance.");
     const after = before - amt;
@@ -251,7 +289,7 @@ export async function updateCardStatus(cardId, status, actor, note = "") {
 
 export async function listTransactions(filters = {}) {
   const snap = await getDocs(collection(db, saleCardCollections.transactions));
-  let rows = snap.docs.map(txnFromSnap).sort((a, b) => String(b.created_at?.seconds || b.created_at || "").localeCompare(String(a.created_at?.seconds || a.created_at || "")));
+  let rows = snap.docs.map(txnFromSnap).sort((a, b) => tsValue(b.created_at) - tsValue(a.created_at));
   if (filters.query) {
     const needle = filters.query.toLowerCase();
     rows = rows.filter(t => [t.card_code, t.staff_name, t.outlet, t.note].join(" ").toLowerCase().includes(needle));
@@ -297,7 +335,7 @@ export async function dashboardData() {
   const recentTransactions = txns.slice(0, 12);
   const lowBalanceCards = cards.filter(c => Number(c.remaining_balance || 0) > 0 && Number(c.remaining_balance || 0) <= 100).sort((a, b) => Number(a.remaining_balance || 0) - Number(b.remaining_balance || 0));
   const nearExpiryCards = cards.filter(c => c.valid_until).sort((a, b) => String(a.valid_until).localeCompare(String(b.valid_until))).slice(0, 10);
-  const recentlyEmptied = cards.filter(c => c.status === "empty").sort((a, b) => String(b.last_used_at || "").localeCompare(String(a.last_used_at || ""))).slice(0, 10);
+  const recentlyEmptied = cards.filter(c => c.status === "empty").sort((a, b) => tsValue(b.last_used_at) - tsValue(a.last_used_at)).slice(0, 10);
 
   const trendDays = [];
   for (let i = 6; i >= 0; i--) {

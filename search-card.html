@@ -14,16 +14,20 @@
   const outletFilterEl = document.getElementById('outletFilter');
   const resultsEl = document.getElementById('results');
   async function render() {
-    const rows = await listCards({ query: queryEl.value.trim(), status: statusFilterEl.value, outlet: outletFilterEl.value.trim() });
-    resultsEl.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Card</th><th>Status</th><th>Face Value</th><th>Remaining</th><th>Outlet</th><th>Valid Until</th><th>Action</th></tr></thead><tbody>${rows.length ? rows.map(c => `<tr><td><a href="card-detail.html?id=${c.id}">${escapeHtml(c.card_label || '-')}</a><div class="helper">${escapeHtml(c.card_code || '-')}</div></td><td><span class="${getStatusClass(c.status)}">${c.status}</span></td><td>${formatMoney(c.face_value)}</td><td>${formatMoney(c.remaining_balance)}</td><td>${escapeHtml(c.outlet_scope || '-')}</td><td>${escapeHtml(toDateValue(c.valid_until) || '-')}</td><td><div class="btn-row"><a class="btn secondary" href="card-detail.html?id=${c.id}">Detail</a>${roleCan(ctx.profile.role, 'sell') && c.status !== 'disabled' ? `<button class="btn danger actionBtn" data-action="disable" data-id="${c.id}">Disable</button>` : ''}${roleCan(ctx.profile.role, 'sell') && c.status === 'disabled' ? `<button class="btn primary actionBtn" data-action="enable" data-id="${c.id}">Enable</button>` : ''}</div></td></tr>`).join('') : '<tr><td colspan="7">No cards found.</td></tr>'}</tbody></table></div>`;
-    document.querySelectorAll('.actionBtn').forEach(btn => btn.addEventListener('click', async () => {
-      try {
-        await updateCardStatus(btn.dataset.id, btn.dataset.action === 'disable' ? 'disabled' : 'active', ctx);
-        await render();
-      } catch (err) {
-        alert(err.message || 'Action failed');
-      }
-    }));
+    try {
+      const rows = await listCards({ query: queryEl.value.trim(), status: statusFilterEl.value, outlet: outletFilterEl.value.trim() });
+      resultsEl.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Card</th><th>Status</th><th>Face Value</th><th>Remaining</th><th>Outlet</th><th>Valid Until</th><th>Action</th></tr></thead><tbody>${rows.length ? rows.map(c => `<tr><td><a href="card-detail.html?id=${c.id}">${escapeHtml(c.card_label || '-')}</a><div class="helper">${escapeHtml(c.card_code || '-')}</div></td><td><span class="${getStatusClass(c.status)}">${c.status}</span></td><td>${formatMoney(c.face_value)}</td><td>${formatMoney(c.remaining_balance)}</td><td>${escapeHtml(c.outlet_scope || '-')}</td><td>${escapeHtml(toDateValue(c.valid_until) || '-')}</td><td><div class="btn-row"><a class="btn secondary" href="card-detail.html?id=${c.id}">Detail</a>${roleCan(ctx.profile.role, 'sell') && c.status !== 'disabled' ? `<button class="btn danger actionBtn" data-action="disable" data-id="${c.id}">Disable</button>` : ''}${roleCan(ctx.profile.role, 'sell') && c.status === 'disabled' ? `<button class="btn primary actionBtn" data-action="enable" data-id="${c.id}">Enable</button>` : ''}</div></td></tr>`).join('') : '<tr><td colspan="7">No cards found.</td></tr>'}</tbody></table></div>`;
+      document.querySelectorAll('.actionBtn').forEach(btn => btn.addEventListener('click', async () => {
+        try {
+          await updateCardStatus(btn.dataset.id, btn.dataset.action === 'disable' ? 'disabled' : 'active', ctx);
+          await render();
+        } catch (err) {
+          alert(err.message || 'Action failed');
+        }
+      }));
+    } catch (err) {
+      resultsEl.innerHTML = `<div class="helper">${escapeHtml(err.message || 'Load failed')}</div>`;
+    }
   }
   queryEl.oninput = render; statusFilterEl.onchange = render; outletFilterEl.oninput = render; await render();
 </script>

@@ -4,12 +4,12 @@
 <body><div id="app"></div>
 <script type="module">
   import { mountShell, roleCan } from './auth-guard.js';
-  import { getSettings, getCardByCode, activateAndSell, escapeHtml, formatMoney, getStatusClass } from './app.js';
-  const ctx = await mountShell('sell-card.html','Sell Card','เปิดใช้งานบัตร draft และบันทึกราคาขายจริง');
+  import { getSettings, getCardByCode, activateAndSell, escapeHtml, formatMoney, getStatusClass, toDateValue } from './app.js';
+  const ctx = await mountShell('sell-card.html','Sell Card','ค้นหาบัตร draft แล้วกด Activate & Sell เพื่อให้ใช้งานจริงได้');
   if (!ctx || !roleCan(ctx.profile.role, 'sell')) location.href = 'index.html';
   const settings = await getSettings();
   const el = document.getElementById('pageContent');
-  el.innerHTML = `<div class="split"><div class="card"><h3>Find Draft Card</h3><div class="form-grid"><div class="field half"><label>Card Code / Label / Serial</label><input id="finder" placeholder="Search card"></div><div class="field half"><label>Outlet</label><select id="saleOutlet">${(settings.outlets||[]).map(o=>`<option>${o}</option>`).join('')}</select></div><div class="field"><div class="btn-row"><button class="btn secondary" id="findBtn" type="button">Find Card</button></div></div></div><div id="cardBox" class="helper">Search for a draft card to activate.</div></div><div class="card"><h3>Sell / Activate</h3><form id="sellForm" class="form-grid"><div class="field half"><label>Sold Price</label><input id="soldPrice" type="number" min="1" value="490"></div><div class="field half"><label>Payment Method</label><select id="payMethod"><option>cash</option><option>room charge</option><option>credit card</option><option>other</option></select></div><div class="field"><label>Remarks</label><textarea id="sellNote" placeholder="Optional note"></textarea></div><div class="field"><div class="btn-row"><button class="btn primary" type="submit">Activate & Sell</button></div></div><div class="field"><div id="sellFeedback" class="helper"></div></div></form></div></div>`;
+  el.innerHTML = `<div class="split"><div class="card"><h3>Find Draft Card</h3><div class="form-grid"><div class="field half"><label>Card Code / Label / Serial</label><input id="finder" placeholder="Search card"></div><div class="field half"><label>Outlet</label><select id="saleOutlet">${(settings.outlets||[]).map(o=>`<option>${escapeHtml(o)}</option>`).join('')}</select></div><div class="field"><div class="btn-row"><button class="btn secondary" id="findBtn" type="button">Find Card</button></div></div></div><div id="cardBox" class="helper">Search for a draft card to activate.</div></div><div class="card"><h3>Sell / Activate</h3><form id="sellForm" class="form-grid"><div class="field half"><label>Sold Price</label><input id="soldPrice" type="number" min="1" value="490"></div><div class="field half"><label>Payment Method</label><select id="payMethod"><option>cash</option><option>room charge</option><option>credit card</option><option>other</option></select></div><div class="field"><label>Remarks</label><textarea id="sellNote" placeholder="Optional note"></textarea></div><div class="field"><div class="btn-row"><button class="btn primary" type="submit">Activate & Sell</button></div></div><div class="field"><div id="sellFeedback" class="helper"></div></div></form></div></div>`;
   const finderEl = document.getElementById('finder');
   const saleOutletEl = document.getElementById('saleOutlet');
   const cardBoxEl = document.getElementById('cardBox');
@@ -18,23 +18,54 @@
   const sellNoteEl = document.getElementById('sellNote');
   const sellFeedbackEl = document.getElementById('sellFeedback');
   let found = null;
+
+  function renderFound(card, message = '') {
+    if (!card) {
+      cardBoxEl.innerHTML = message || 'Card not found.';
+      return;
+    }
+    cardBoxEl.innerHTML = `<div class="list-item"><div class="stat-line"><span>Card Code</span><strong>${escapeHtml(card.card_code)}</strong></div><div class="stat-line"><span>Status</span><strong><span class="${getStatusClass(card.status)}">${card.status}</span></strong></div><div class="stat-line"><span>Face Value</span><strong>${formatMoney(card.face_value)}</strong></div><div class="stat-line"><span>Default Sold Price</span><strong>${formatMoney(card.sold_price)}</strong></div><div class="stat-line"><span>Outlet</span><strong>${escapeHtml(card.outlet_scope || '-')}</strong></div><div class="stat-line"><span>Valid Until</span><strong>${escapeHtml(toDateValue(card.valid_until) || 'Until fully redeemed')}</strong></div></div>`;
+  }
+
   document.getElementById('findBtn').onclick = async () => {
     sellFeedbackEl.textContent = '';
-    found = await getCardByCode(finderEl.value.trim());
-    if (!found) { cardBoxEl.innerHTML = 'Card not found.'; return; }
-    cardBoxEl.innerHTML = `<div class="list-item"><div class="stat-line"><span>Card Code</span><strong>${escapeHtml(found.card_code)}</strong></div><div class="stat-line"><span>Status</span><strong><span class="${getStatusClass(found.status)}">${found.status}</span></strong></div><div class="stat-line"><span>Face Value</span><strong>${formatMoney(found.face_value)}</strong></div><div class="stat-line"><span>Default Sold Price</span><strong>${formatMoney(found.sold_price)}</strong></div></div>`;
-    soldPriceEl.value = found.sold_price || 490;
+    const card = await getCardByCode(finderEl.value.trim());
+    if (!card) {
+      found = null;
+      renderFound(null, 'Card not found.');
+      return;
+    }
+    if (card.status !== 'draft') {
+      found = null;
+      renderFound(card, '');
+      sellFeedbackEl.textContent = 'This card is not in draft status.';
+      return;
+    }
+    found = card;
+    renderFound(card);
+    soldPriceEl.value = card.sold_price || 490;
+    saleOutletEl.value = card.outlet_scope || saleOutletEl.value;
   };
+
+  finderEl.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      document.getElementById('findBtn').click();
+    }
+  });
+
   document.getElementById('sellForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    sellFeedbackEl.textContent = 'Activating card...';
+    sellFeedbackEl.textContent = 'Activating card in Firebase...';
     try {
       if (!found) throw new Error('Find a draft card first.');
-      const sold = await activateAndSell(found.id, soldPriceEl.value, saleOutletEl.value, `${payMethodEl.value}${sellNoteEl.value ? ` | ${sellNoteEl.value}` : ''}`, ctx);
+      const note = [payMethodEl.value, sellNoteEl.value.trim()].filter(Boolean).join(' | ');
+      const sold = await activateAndSell(found.id, soldPriceEl.value, saleOutletEl.value, note, ctx);
       sellFeedbackEl.textContent = `Card ${sold.card_code} activated successfully.`;
       found = null;
-      cardBoxEl.innerHTML = 'Search for a draft card to activate.';
+      renderFound(null, 'Search for a draft card to activate.');
       e.target.reset();
+      saleOutletEl.value = settings.outlets?.[0] || 'Aroonsawat';
     } catch (err) {
       sellFeedbackEl.textContent = err.message || 'Activation failed';
     }
