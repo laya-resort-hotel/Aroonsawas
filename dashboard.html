@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="th">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Dashboard</title><link rel="stylesheet" href="style.css" /></head>
+<body><div id="app"></div>
+<script type="module">
+  import { mountShell } from './auth-guard.js';
+  import { dashboardData, formatMoney, escapeHtml, toDateTimeText, toDateValue } from './app.js';
+  await mountShell('dashboard.html','Dashboard','ยอดขายและยอดใช้ของ Sales Voucher v6 เท่านั้น ไม่ปนกับ Free Voucher เดิม');
+  const el = document.getElementById('pageContent');
+  el.innerHTML = `<div class="notice">กำลังโหลดข้อมูล...</div>`;
+  const data = await dashboardData();
+  const { stats, byOutlet, byStaff, recentTransactions, lowBalanceCards, nearExpiryCards, recentlyEmptied, trendDays } = data;
+  const maxBar = Math.max(1, ...trendDays.flatMap(d => [d.sales, d.debit]));
+  el.innerHTML = `
+    <div class="kpi-grid">
+      <div class="card kpi"><div class="metric"><div class="label">Sales Today</div><div class="value">${formatMoney(stats.salesToday)}</div></div></div>
+      <div class="card kpi"><div class="metric"><div class="label">Cards Sold Today</div><div class="value">${stats.cardsSoldToday}</div></div></div>
+      <div class="card kpi"><div class="metric"><div class="label">Redeemed Value Today</div><div class="value">${formatMoney(stats.redeemedToday)}</div></div></div>
+      <div class="card kpi"><div class="metric"><div class="label">Outstanding Balance</div><div class="value">${formatMoney(stats.outstanding)}</div></div></div>
+      <div class="card kpi"><div class="metric"><div class="label">Active Cards</div><div class="value">${stats.activeCards}</div></div></div>
+      <div class="card kpi"><div class="metric"><div class="label">Empty Cards</div><div class="value">${stats.emptyCards}</div></div></div>
+      <div class="card kpi"><div class="metric"><div class="label">Draft Cards</div><div class="value">${stats.draftCards}</div></div></div>
+      <div class="card kpi"><div class="metric"><div class="label">Disabled Cards</div><div class="value">${stats.disabledCards}</div></div></div>
+    </div>
+    <div class="split">
+      <div class="card"><h3>7-Day Sales Trend</h3><div class="chart-box">${trendDays.map(d => `<div class="chart-bar" style="height:${Math.max(22, (d.sales/maxBar)*180)}px"><strong>${d.sales ? Math.round(d.sales) : ''}</strong><span>${d.label}</span></div>`).join('')}</div></div>
+      <div class="card"><h3>7-Day Redeemed Trend</h3><div class="chart-box">${trendDays.map(d => `<div class="chart-bar" style="height:${Math.max(22, (d.debit/maxBar)*180)}px;background:linear-gradient(180deg,#7db8ff,#4573d6)"><strong>${d.debit ? Math.round(d.debit) : ''}</strong><span>${d.label}</span></div>`).join('')}</div></div>
+    </div>
+    <div class="split" style="margin-top:16px">
+      <div class="card"><h3>Debit by Outlet (Today)</h3><div class="list">${(byOutlet.length?byOutlet:[{label:'No data today',value:0}]).map(r => `<div class="list-item"><div class="stat-line"><span>${escapeHtml(r.label)}</span><strong>${formatMoney(r.value)}</strong></div></div>`).join('')}</div></div>
+      <div class="card"><h3>Debit by Staff (Today)</h3><div class="list">${(byStaff.length?byStaff:[{label:'No data today',value:0}]).map(r => `<div class="list-item"><div class="stat-line"><span>${escapeHtml(r.label)}</span><strong>${formatMoney(r.value)}</strong></div></div>`).join('')}</div></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>Recent Transactions</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Card</th><th>Amount</th><th>After</th><th>Outlet</th><th>Staff</th></tr></thead><tbody>${recentTransactions.length ? recentTransactions.map(t => `<tr><td>${toDateTimeText(t.created_at)}</td><td>${escapeHtml(t.txn_type)}</td><td>${escapeHtml(t.card_code)}</td><td>${formatMoney(t.amount)}</td><td>${formatMoney(t.balance_after)}</td><td>${escapeHtml(t.outlet||'-')}</td><td>${escapeHtml(t.staff_name||'-')}</td></tr>`).join('') : '<tr><td colspan="7">No transactions yet.</td></tr>'}</tbody></table></div></div>
+    <div class="split" style="margin-top:16px">
+      <div class="card"><h3>Low Balance Cards</h3><div class="list">${lowBalanceCards.length ? lowBalanceCards.map(c => `<a class="list-item" href="card-detail.html?id=${c.id}"><div class="stat-line"><span>${escapeHtml(c.card_label)} <small>${escapeHtml(c.card_code)}</small></span><strong>${formatMoney(c.remaining_balance)}</strong></div></a>`).join('') : '<div class="helper">No low-balance cards.</div>'}</div></div>
+      <div class="card"><h3>Cards Near Expiry</h3><div class="list">${nearExpiryCards.length ? nearExpiryCards.map(c => `<a class="list-item" href="card-detail.html?id=${c.id}"><div class="stat-line"><span>${escapeHtml(c.card_label)}</span><strong>${escapeHtml(toDateValue(c.valid_until) || '-')}</strong></div></a>`).join('') : '<div class="helper">No expiry dates found.</div>'}</div></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>Recently Emptied Cards</h3><div class="list">${recentlyEmptied.length ? recentlyEmptied.map(c => `<a class="list-item" href="card-detail.html?id=${c.id}"><div class="stat-line"><span>${escapeHtml(c.card_label)} / ${escapeHtml(c.card_code)}</span><strong>${toDateTimeText(c.last_used_at)}</strong></div></a>`).join('') : '<div class="helper">No empty cards yet.</div>'}</div></div>`;
+</script>
+</body></html>

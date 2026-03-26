@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="th">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Card Detail</title><link rel="stylesheet" href="style.css" /></head>
+<body><div id="app"></div>
+<script type="module">
+  import { mountShell, roleCan } from './auth-guard.js';
+  import { getCardById, getCardTransactions, updateCardStatus, escapeHtml, formatMoney, getStatusClass, toDateTimeText, toDateValue } from './app.js';
+  const ctx = await mountShell('card-detail.html','Card Detail','สรุปข้อมูลบัตร 1 ใบ พร้อมดู ledger ย้อนหลัง');
+  const id = new URLSearchParams(location.search).get('id');
+  const card = await getCardById(id);
+  const el = document.getElementById('pageContent');
+  if (!card) {
+    el.innerHTML = '<div class="card">Card not found.</div>';
+  } else {
+    const txns = await getCardTransactions(card.id);
+    el.innerHTML = `<div class="split"><div class="card"><h3>Card Summary</h3><div class="list-item"><div class="stat-line"><span>Card Code</span><strong>${escapeHtml(card.card_code)}</strong></div><div class="stat-line"><span>Card Label</span><strong>${escapeHtml(card.card_label || '-')}</strong></div><div class="stat-line"><span>Serial</span><strong>${escapeHtml(card.card_serial || '-')}</strong></div><div class="stat-line"><span>Status</span><strong><span class="${getStatusClass(card.status)}">${card.status}</span></strong></div><div class="stat-line"><span>Face Value</span><strong>${formatMoney(card.face_value)}</strong></div><div class="stat-line"><span>Sold Price</span><strong>${formatMoney(card.sold_price)}</strong></div><div class="stat-line"><span>Remaining Balance</span><strong>${formatMoney(card.remaining_balance)}</strong></div><div class="stat-line"><span>Outlet Scope</span><strong>${escapeHtml(card.outlet_scope || '-')}</strong></div><div class="stat-line"><span>Valid Until</span><strong>${escapeHtml(toDateValue(card.valid_until) || 'Until empty')}</strong></div><div class="stat-line"><span>Sold At</span><strong>${toDateTimeText(card.sold_at)}</strong></div><div class="stat-line"><span>Last Used</span><strong>${toDateTimeText(card.last_used_at)}</strong></div></div><div class="btn-row" style="margin-top:12px">${roleCan(ctx.profile.role, 'sell') && card.status !== 'disabled' ? `<button class="btn danger" id="disableBtn" type="button">Disable</button>` : ''}${roleCan(ctx.profile.role, 'sell') && card.status === 'disabled' ? `<button class="btn primary" id="enableBtn" type="button">Enable</button>` : ''}</div><div id="actionFeedback" class="helper" style="margin-top:10px"></div></div><div class="card"><h3>Transaction History</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Before</th><th>After</th><th>Outlet</th><th>Staff</th></tr></thead><tbody>${txns.length ? txns.map(t => `<tr><td>${toDateTimeText(t.created_at)}</td><td>${escapeHtml(t.txn_type)}</td><td>${formatMoney(t.amount)}</td><td>${formatMoney(t.balance_before)}</td><td>${formatMoney(t.balance_after)}</td><td>${escapeHtml(t.outlet || '-')}</td><td>${escapeHtml(t.staff_name || '-')}</td></tr>`).join('') : '<tr><td colspan="7">No transactions yet.</td></tr>'}</tbody></table></div></div></div>`;
+    const actionFeedbackEl = document.getElementById('actionFeedback');
+    document.getElementById('disableBtn')?.addEventListener('click', async () => {
+      try { await updateCardStatus(card.id, 'disabled', ctx); actionFeedbackEl.textContent = 'Card disabled.'; } catch (err) { actionFeedbackEl.textContent = err.message || 'Action failed'; }
+    });
+    document.getElementById('enableBtn')?.addEventListener('click', async () => {
+      try { await updateCardStatus(card.id, 'active', ctx); actionFeedbackEl.textContent = 'Card enabled.'; } catch (err) { actionFeedbackEl.textContent = err.message || 'Action failed'; }
+    });
+  }
+</script>
+</body></html>

@@ -1,0 +1,207 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function myUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function myProfileExists() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function myProfile() {
+      return myUserDoc().data;
+    }
+
+    function isActive() {
+      return myProfileExists() && myProfile().active == true;
+    }
+
+    function isStaff() {
+      return isActive() && myProfile().role == "staff";
+    }
+
+    function isSupervisorOrAbove() {
+      return isActive() && (
+        myProfile().role == "supervisor" ||
+        myProfile().role == "manager" ||
+        myProfile().role == "admin"
+      );
+    }
+
+    function isManagerOrAbove() {
+      return isActive() && (
+        myProfile().role == "manager" ||
+        myProfile().role == "admin"
+      );
+    }
+
+    function isStaffOrAbove() {
+      return isActive() && (
+        myProfile().role == "staff" ||
+        myProfile().role == "supervisor" ||
+        myProfile().role == "manager" ||
+        myProfile().role == "admin"
+      );
+    }
+
+    function isAdmin() {
+      return isActive() && myProfile().role == "admin";
+    }
+
+    function sameDepartment(data) {
+      return isAdmin() || data.department == myProfile().department;
+    }
+
+    function sameOutlet(data) {
+      return isAdmin() || !(myProfile().outlet is string) || myProfile().outlet == "" || data.outlet == myProfile().outlet;
+    }
+
+    function coreVoucherFieldsStable() {
+      return request.resource.data.voucher_code == resource.data.voucher_code
+        && request.resource.data.internal_no == resource.data.internal_no
+        && request.resource.data.department == resource.data.department
+        && request.resource.data.outlet == resource.data.outlet
+        && request.resource.data.voucher_mode == resource.data.voucher_mode
+        && request.resource.data.card_label == resource.data.card_label
+        && request.resource.data.created_at == resource.data.created_at
+        && request.resource.data.issued_by_uid == resource.data.issued_by_uid
+        && request.resource.data.issued_by_name == resource.data.issued_by_name;
+    }
+
+    // ===== EXISTING FREE VOUCHER SYSTEM (keep as-is) =====
+    match /employee_login_index/{employeeId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.email is string
+        && request.resource.data.active == true
+        && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.role == "staff"
+        && request.resource.data.active == true
+        && request.resource.data.employee_id is string
+        && request.resource.data.name is string
+        && request.resource.data.email is string
+        && request.resource.data.department is string
+        && request.resource.data.outlet is string;
+
+      allow update: if signedIn()
+        && request.auth.uid == userId
+        && resource.data.role == request.resource.data.role
+        && resource.data.active == request.resource.data.active
+        && resource.data.employee_id == request.resource.data.employee_id
+        && resource.data.email == request.resource.data.email;
+
+      allow update, delete: if isAdmin();
+    }
+
+    match /vouchers/{docId} {
+      allow read: if isStaffOrAbove();
+
+      allow create: if isSupervisorOrAbove()
+        && request.resource.data.issued_by_uid == request.auth.uid
+        && request.resource.data.issued_by_name == myProfile().name
+        && request.resource.data.voucher_mode is string
+        && request.resource.data.status == "issued"
+        && sameDepartment(request.resource.data);
+
+      allow update: if isAdmin()
+        || (
+          isSupervisorOrAbove()
+          && sameDepartment(resource.data)
+          && sameDepartment(request.resource.data)
+        )
+        || (
+          isStaff()
+          && coreVoucherFieldsStable()
+          && resource.data.status == "issued"
+          && request.resource.data.status == "redeemed"
+          && request.resource.data.redeemed_by_uid == request.auth.uid
+          && sameOutlet(resource.data)
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    match /voucher_logs/{logId} {
+      allow read: if isSupervisorOrAbove();
+      allow create: if isStaffOrAbove()
+        && request.resource.data.action_by_uid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /voucher_claim_tokens/{tokenId} {
+      allow read: if isSupervisorOrAbove();
+      allow create, update, delete: if false;
+    }
+
+    match /running_numbers/{docId} {
+      allow read, write: if isSupervisorOrAbove();
+    }
+
+    // ===== NEW SALE CARD SYSTEM v6 =====
+    match /sale_settings/{docId} {
+      allow read: if isStaffOrAbove();
+      allow create, update: if isManagerOrAbove();
+      allow delete: if isAdmin();
+    }
+
+    match /sale_cards/{cardId} {
+      allow read: if isStaffOrAbove();
+
+      allow create: if isManagerOrAbove()
+        && request.resource.data.card_code is string
+        && request.resource.data.card_label is string
+        && request.resource.data.face_value is number
+        && request.resource.data.sold_price is number
+        && request.resource.data.status == "draft"
+        && request.resource.data.remaining_balance == 0;
+
+      allow update: if isManagerOrAbove()
+        || (
+          isStaffOrAbove()
+          && request.resource.data.card_code == resource.data.card_code
+          && request.resource.data.card_label == resource.data.card_label
+          && request.resource.data.card_serial == resource.data.card_serial
+          && request.resource.data.face_value == resource.data.face_value
+          && request.resource.data.sold_price == resource.data.sold_price
+          && request.resource.data.outlet_scope == resource.data.outlet_scope
+          && request.resource.data.valid_until == resource.data.valid_until
+          && request.resource.data.notes == resource.data.notes
+          && request.resource.data.created_by_uid == resource.data.created_by_uid
+          && request.resource.data.created_by_name == resource.data.created_by_name
+          && request.resource.data.created_at == resource.data.created_at
+          && resource.data.status == "active"
+          && (request.resource.data.status == "active" || request.resource.data.status == "empty")
+          && request.resource.data.remaining_balance is number
+          && request.resource.data.remaining_balance >= 0
+          && request.resource.data.remaining_balance <= resource.data.remaining_balance
+          && request.resource.data.last_used_by_uid == request.auth.uid
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    match /sale_card_transactions/{txnId} {
+      allow read: if isStaffOrAbove();
+      allow create: if isStaffOrAbove()
+        && request.resource.data.staff_uid == request.auth.uid
+        && request.resource.data.card_code is string
+        && request.resource.data.txn_type is string
+        && request.resource.data.amount is number;
+      allow update, delete: if isAdmin();
+    }
+  }
+}

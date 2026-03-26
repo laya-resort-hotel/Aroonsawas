@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="th">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Users</title><link rel="stylesheet" href="style.css" /></head>
+<body><div id="app"></div>
+<script type="module">
+  import { mountShell, roleCan } from './auth-guard.js';
+  import { listUsers, escapeHtml } from './app.js';
+  const ctx = await mountShell('admin-users.html','Users','อ่านรายชื่อผู้ใช้จาก collection เดิมเพื่อใช้ role เดิมร่วมกับ auto-login');
+  if (!ctx || !roleCan(ctx.profile.role, 'users')) location.href = 'index.html';
+  const users = await listUsers();
+  document.getElementById('pageContent').innerHTML = `<div class="card"><div class="table-wrap"><table><thead><tr><th>Employee ID</th><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Outlet</th><th>Status</th></tr></thead><tbody>${users.length ? users.map(u => `<tr><td>${escapeHtml(u.employee_id || '-')}</td><td>${escapeHtml(u.name || '-')}</td><td>${escapeHtml(u.email || '-')}</td><td>${escapeHtml(u.role || '-')}</td><td>${escapeHtml(u.department || '-')}</td><td>${escapeHtml(u.outlet || '-')}</td><td>${u.active ? 'Active' : 'Inactive'}</td></tr>`).join('') : '<tr><td colspan="7">No users found.</td></tr>'}</tbody></table></div><div class="footer-note">หน้านี้ยังอ่านจาก users collection เดิมเพื่อให้ role ตรงกับระบบเก่าและรองรับ auto-login ข้าม repo</div></div>`;
+</script>
+</body></html>

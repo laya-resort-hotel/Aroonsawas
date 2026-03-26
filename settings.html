@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="th">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Settings</title><link rel="stylesheet" href="style.css" /></head>
+<body><div id="app"></div>
+<script type="module">
+  import { mountShell, roleCan } from './auth-guard.js';
+  import { getSettings, saveSettings, escapeHtml } from './app.js';
+  const ctx = await mountShell('settings.html','Settings','ตั้งค่าระบบ Sale Card และ URL กลับไประบบ Free Voucher');
+  if (!ctx || !roleCan(ctx.profile.role, 'settings')) location.href = 'index.html';
+  const settings = await getSettings();
+  const el = document.getElementById('pageContent');
+  el.innerHTML = `<div class="card"><form id="settingsForm" class="form-grid"><div class="field half"><label>Company Name</label><input id="companyName" value="${escapeHtml(settings.companyName || '')}"></div><div class="field quarter"><label>Currency</label><input id="currency" value="${escapeHtml(settings.currency || 'THB')}"></div><div class="field quarter"><label>Default Validity Days</label><input id="defaultValidityDays" type="number" value="${settings.defaultValidityDays || 180}"></div><div class="field"><label>Outlet List (comma separated)</label><textarea id="outlets">${escapeHtml((settings.outlets || []).join(', '))}</textarea></div><div class="field half"><label>Free Voucher URL</label><input id="freeVoucherUrl" value="${escapeHtml(settings.freeVoucherUrl || '')}"></div><div class="field half"><label>Sale Card Repo URL</label><input id="saleCardRepoUrl" value="${escapeHtml(settings.saleCardRepoUrl || '')}"></div><div class="field"><div class="btn-row"><button class="btn primary" type="submit">Save Settings</button></div></div><div class="field"><div id="settingsFeedback" class="helper"></div></div></form></div>`;
+  const settingsFormEl = document.getElementById('settingsForm');
+  const companyNameEl = document.getElementById('companyName');
+  const currencyEl = document.getElementById('currency');
+  const defaultValidityDaysEl = document.getElementById('defaultValidityDays');
+  const outletsEl = document.getElementById('outlets');
+  const freeVoucherUrlEl = document.getElementById('freeVoucherUrl');
+  const saleCardRepoUrlEl = document.getElementById('saleCardRepoUrl');
+  const settingsFeedbackEl = document.getElementById('settingsFeedback');
+  settingsFormEl.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    settingsFeedbackEl.textContent = 'Saving settings...';
+    try {
+      await saveSettings({ companyName: companyNameEl.value.trim(), currency: currencyEl.value.trim() || 'THB', defaultValidityDays: Number(defaultValidityDaysEl.value || 180), outlets: outletsEl.value.split(',').map(v=>v.trim()).filter(Boolean), freeVoucherUrl: freeVoucherUrlEl.value.trim(), saleCardRepoUrl: saleCardRepoUrlEl.value.trim() });
+      settingsFeedbackEl.textContent = 'Settings saved.';
+    } catch (err) {
+      settingsFeedbackEl.textContent = err.message || 'Save failed';
+    }
+  });
+</script>
+</body></html>

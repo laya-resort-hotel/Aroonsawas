@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="th">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Create Card</title><link rel="stylesheet" href="style.css" /></head>
+<body><div id="app"></div>
+<script type="module">
+  import { mountShell, roleCan } from './auth-guard.js';
+  import { getSettings, createCard, listCards } from './app.js';
+  const ctx = await mountShell('create-card.html','Create Card','สร้างบัตรใหม่เข้าระบบในสถานะ draft โดยยังไม่ตัดกับระบบเก่า');
+  if (!ctx || !roleCan(ctx.profile.role, 'create')) location.href = 'index.html';
+  const settings = await getSettings();
+  const el = document.getElementById('pageContent');
+  el.innerHTML = `<div class="card"><form id="cardForm" class="form-grid">
+    <div class="field half"><label>Card Code</label><input id="card_code" required placeholder="เช่น SV600-004"></div>
+    <div class="field half"><label>Card Label</label><input id="card_label" required placeholder="เช่น SV-004"></div>
+    <div class="field half"><label>Card Serial</label><input id="card_serial" placeholder="เช่น 2026-0004"></div>
+    <div class="field quarter"><label>Face Value</label><input id="face_value" type="number" min="1" value="600" required></div>
+    <div class="field quarter"><label>Sold Price</label><input id="sold_price" type="number" min="1" value="490" required></div>
+    <div class="field half"><label>Outlet Scope</label><select id="outlet_scope">${(settings.outlets||[]).map(o=>`<option>${o}</option>`).join('')}</select></div>
+    <div class="field half"><label>Valid Until</label><input id="valid_until" type="date"></div>
+    <div class="field"><label>Notes</label><textarea id="notes" placeholder="Internal note"></textarea></div>
+    <div class="field"><div class="btn-row"><button class="btn primary" type="submit">Save Draft</button><button class="btn secondary" type="button" id="fillBtn">Generate Sample Code</button></div></div>
+    <div class="field"><div id="feedback" class="helper"></div></div>
+  </form></div>`;
+
+  const form = document.getElementById('cardForm');
+  const feedback = document.getElementById('feedback');
+  const cardCode = document.getElementById('card_code');
+  const cardLabel = document.getElementById('card_label');
+  const cardSerial = document.getElementById('card_serial');
+  const faceValue = document.getElementById('face_value');
+  const soldPrice = document.getElementById('sold_price');
+  const outletScope = document.getElementById('outlet_scope');
+  const validUntil = document.getElementById('valid_until');
+  const notesEl = document.getElementById('notes');
+
+  document.getElementById('fillBtn').onclick = async () => {
+    const cards = await listCards({});
+    const n = String(cards.length + 1).padStart(3, '0');
+    cardCode.value = `SV600-${n}`;
+    cardLabel.value = `SV-${n}`;
+    cardSerial.value = `2026-${n}`;
+  };
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    feedback.textContent = 'Saving draft...';
+    try {
+      const card = await createCard({ card_code: cardCode.value, card_label: cardLabel.value, card_serial: cardSerial.value, face_value: faceValue.value, sold_price: soldPrice.value, outlet_scope: outletScope.value, valid_until: validUntil.value, notes: notesEl.value }, ctx);
+      feedback.textContent = `Saved draft ${card.card_code}.`;
+      e.target.reset();
+    } catch (err) {
+      feedback.textContent = err.message || 'Save failed';
+    }
+  });
+</script>
+</body></html>

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="th">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Check Balance</title><link rel="stylesheet" href="style.css" /></head>
+<body><div id="app"></div>
+<script type="module">
+  import { mountShell } from './auth-guard.js';
+  import { getCardByCode, escapeHtml, formatMoney, getStatusClass, toDateTimeText } from './app.js';
+  await mountShell('check-balance.html','Check Balance','เช็กยอดคงเหลือโดยไม่เปลี่ยนข้อมูลในบัตร');
+  const el = document.getElementById('pageContent');
+  el.innerHTML = `<div class="card"><div class="form-grid"><div class="field half"><label>Card Code / Label / Serial</label><input id="codeInput" placeholder="Enter card code"></div><div class="field half"><label>&nbsp;</label><button class="btn secondary" type="button" id="lookupBtn">Find Card</button></div></div><div id="balanceBox" class="helper">No card selected.</div></div>`;
+  const lookupBtnEl = document.getElementById('lookupBtn');
+  const codeInputEl = document.getElementById('codeInput');
+  const balanceBoxEl = document.getElementById('balanceBox');
+  lookupBtnEl.onclick = async () => {
+    const card = await getCardByCode(codeInputEl.value.trim());
+    if (!card) { balanceBoxEl.textContent = 'Card not found.'; return; }
+    balanceBoxEl.innerHTML = `<div class="list-item"><div class="stat-line"><span>Card Code</span><strong>${escapeHtml(card.card_code)}</strong></div><div class="stat-line"><span>Card Label</span><strong>${escapeHtml(card.card_label)}</strong></div><div class="stat-line"><span>Status</span><strong><span class="${getStatusClass(card.status)}">${card.status}</span></strong></div><div class="stat-line"><span>Remaining Balance</span><strong>${formatMoney(card.remaining_balance)}</strong></div><div class="stat-line"><span>Valid Until</span><strong>${escapeHtml(card.valid_until || 'Until empty')}</strong></div><div class="stat-line"><span>Last Used</span><strong>${toDateTimeText(card.last_used_at)}</strong></div></div>`;
+  };
+</script>
+</body></html>

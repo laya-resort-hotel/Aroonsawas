@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="th">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Sell Card</title><link rel="stylesheet" href="style.css" /></head>
+<body><div id="app"></div>
+<script type="module">
+  import { mountShell, roleCan } from './auth-guard.js';
+  import { getSettings, getCardByCode, activateAndSell, escapeHtml, formatMoney, getStatusClass } from './app.js';
+  const ctx = await mountShell('sell-card.html','Sell Card','เปิดใช้งานบัตร draft และบันทึกราคาขายจริง');
+  if (!ctx || !roleCan(ctx.profile.role, 'sell')) location.href = 'index.html';
+  const settings = await getSettings();
+  const el = document.getElementById('pageContent');
+  el.innerHTML = `<div class="split"><div class="card"><h3>Find Draft Card</h3><div class="form-grid"><div class="field half"><label>Card Code / Label / Serial</label><input id="finder" placeholder="Search card"></div><div class="field half"><label>Outlet</label><select id="saleOutlet">${(settings.outlets||[]).map(o=>`<option>${o}</option>`).join('')}</select></div><div class="field"><div class="btn-row"><button class="btn secondary" id="findBtn" type="button">Find Card</button></div></div></div><div id="cardBox" class="helper">Search for a draft card to activate.</div></div><div class="card"><h3>Sell / Activate</h3><form id="sellForm" class="form-grid"><div class="field half"><label>Sold Price</label><input id="soldPrice" type="number" min="1" value="490"></div><div class="field half"><label>Payment Method</label><select id="payMethod"><option>cash</option><option>room charge</option><option>credit card</option><option>other</option></select></div><div class="field"><label>Remarks</label><textarea id="sellNote" placeholder="Optional note"></textarea></div><div class="field"><div class="btn-row"><button class="btn primary" type="submit">Activate & Sell</button></div></div><div class="field"><div id="sellFeedback" class="helper"></div></div></form></div></div>`;
+  const finderEl = document.getElementById('finder');
+  const saleOutletEl = document.getElementById('saleOutlet');
+  const cardBoxEl = document.getElementById('cardBox');
+  const soldPriceEl = document.getElementById('soldPrice');
+  const payMethodEl = document.getElementById('payMethod');
+  const sellNoteEl = document.getElementById('sellNote');
+  const sellFeedbackEl = document.getElementById('sellFeedback');
+  let found = null;
+  document.getElementById('findBtn').onclick = async () => {
+    sellFeedbackEl.textContent = '';
+    found = await getCardByCode(finderEl.value.trim());
+    if (!found) { cardBoxEl.innerHTML = 'Card not found.'; return; }
+    cardBoxEl.innerHTML = `<div class="list-item"><div class="stat-line"><span>Card Code</span><strong>${escapeHtml(found.card_code)}</strong></div><div class="stat-line"><span>Status</span><strong><span class="${getStatusClass(found.status)}">${found.status}</span></strong></div><div class="stat-line"><span>Face Value</span><strong>${formatMoney(found.face_value)}</strong></div><div class="stat-line"><span>Default Sold Price</span><strong>${formatMoney(found.sold_price)}</strong></div></div>`;
+    soldPriceEl.value = found.sold_price || 490;
+  };
+  document.getElementById('sellForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    sellFeedbackEl.textContent = 'Activating card...';
+    try {
+      if (!found) throw new Error('Find a draft card first.');
+      const sold = await activateAndSell(found.id, soldPriceEl.value, saleOutletEl.value, `${payMethodEl.value}${sellNoteEl.value ? ` | ${sellNoteEl.value}` : ''}`, ctx);
+      sellFeedbackEl.textContent = `Card ${sold.card_code} activated successfully.`;
+      found = null;
+      cardBoxEl.innerHTML = 'Search for a draft card to activate.';
+      e.target.reset();
+    } catch (err) {
+      sellFeedbackEl.textContent = err.message || 'Activation failed';
+    }
+  });
+</script>
+</body></html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Laya Sales Voucher v6 - Auto Login</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="login-body">
+  <div class="login-card">
+    <div class="login-header">
+      <h1>Laya Sales Voucher v6</h1>
+      <p>ระบบใหม่นี้ออกแบบให้เปิดจากปุ่ม <b>For Sales Voucher</b> ในเว็บเดิม แล้วเข้าสู่ระบบอัตโนมัติถ้ายังมี session อยู่</p>
+    </div>
+    <div class="notice" id="autoMessage">กำลังตรวจสอบ session จากระบบเดิม...</div>
+    <form id="loginForm" class="form-grid" style="margin-top:16px">
+      <div class="field half"><label>รหัสพนักงาน</label><input id="employeeId" autocomplete="username" placeholder="เช่น 300204 หรือ FB001" /></div>
+      <div class="field half"><label>รหัสผ่าน</label><input id="password" type="password" autocomplete="current-password" placeholder="กรอกรหัสผ่าน" /></div>
+      <div class="field"><div class="btn-row"><button class="btn primary" type="submit">Login สำรอง</button><button class="btn secondary" type="button" id="backBtn">Back to Free Voucher</button></div></div>
+      <div class="field"><div id="msg" class="helper"></div></div>
+    </form>
+  </div>
+
+  <script type="module">
+    import { auth, appConfig } from './firebase-config.js';
+    import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js';
+    import { getHomeByRole } from './auth-guard.js';
+    import { signInByEmployeeId } from './app.js';
+    import { db, legacyCollections } from './firebase-config.js';
+    import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js';
+
+    const autoMessage = document.getElementById('autoMessage');
+    const msg = document.getElementById('msg');
+    const backBtn = document.getElementById('backBtn');
+    const loginForm = document.getElementById('loginForm');
+
+    backBtn.onclick = () => window.open(appConfig.backToFreeVoucherUrl, '_blank', 'noopener,noreferrer');
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        autoMessage.textContent = 'ไม่พบ session เดิม สามารถใช้ Login สำรองด้านล่างได้';
+        return;
+      }
+      autoMessage.textContent = 'พบ session เดิมแล้ว กำลังพาเข้าสู่ระบบ...';
+      try {
+        const snap = await getDoc(doc(db, legacyCollections.users, user.uid));
+        if (!snap.exists()) {
+          msg.textContent = 'ไม่พบบัญชีพนักงานในระบบ';
+          return;
+        }
+        const profile = snap.data();
+        if (!profile.active) {
+          msg.textContent = 'บัญชีนี้ถูกปิดการใช้งาน';
+          return;
+        }
+        location.href = getHomeByRole(profile);
+      } catch (err) {
+        msg.textContent = 'ตรวจสอบ session ไม่สำเร็จ: ' + err.message;
+      }
+    });
+
+    const employeeIdEl = document.getElementById('employeeId');
+    const passwordEl = document.getElementById('password');
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.textContent = 'กำลังเข้าสู่ระบบ...';
+      try {
+        await signInByEmployeeId(employeeIdEl.value, passwordEl.value);
+      } catch (err) {
+        msg.textContent = err.message || 'Login ไม่สำเร็จ';
+      }
+    });
+  </script>
+</body>
+</html>

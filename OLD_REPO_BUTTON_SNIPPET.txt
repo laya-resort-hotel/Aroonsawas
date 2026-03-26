@@ -1,0 +1,16 @@
+Example button for the old Free Voucher repo (open new repo in a new tab):
+
+<a
+  class="btn btn-sales-voucher"
+  href="https://wuttichaikoji-oss.github.io/Laya-Sales-Voucher/"
+  target="_blank"
+  rel="noopener noreferrer"
+>
+  For Sales Voucher
+</a>
+
+If you prefer a JS button:
+
+<button type="button" onclick="window.open('https://wuttichaikoji-oss.github.io/Laya-Sales-Voucher/','_blank','noopener,noreferrer')">
+  For Sales Voucher
+</button>

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="th">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Scan / Deduct</title><link rel="stylesheet" href="style.css" /></head>
+<body><div id="app"></div>
+<script type="module">
+  import { mountShell } from './auth-guard.js';
+  import { getSettings, getCardByCode, deductBalance, escapeHtml, formatMoney, getStatusClass, toDateTimeText } from './app.js';
+  const ctx = await mountShell('scan-deduct.html','Scan / Deduct','หน้าหลักสำหรับ staff ใช้สแกน QR แล้วตัดยอดคงเหลือของบัตร');
+  const settings = await getSettings();
+  const el = document.getElementById('pageContent');
+  el.innerHTML = `<div class="split"><div class="card"><h3>Scan Card</h3><div class="btn-row"><button class="btn secondary" id="startCamBtn" type="button">Start Camera</button><button class="btn secondary" id="stopCamBtn" type="button">Stop Camera</button></div><div class="scanner-wrap" style="margin-top:12px"><video id="scannerVideo" playsinline muted></video></div><div class="helper" id="camMsg" style="margin-top:10px">Camera not started yet. You can always search by card code below.</div><div class="form-grid" style="margin-top:12px"><div class="field half"><label>Card Code / Label / Serial</label><input id="manualCode" placeholder="Enter or scan card code"></div><div class="field half"><label>Outlet</label><select id="useOutlet">${(settings.outlets||[]).map(o=>`<option>${o}</option>`).join('')}</select></div><div class="field"><div class="btn-row"><button class="btn primary" type="button" id="findCardBtn">Find Card</button></div></div></div></div><div class="card"><h3>Deduct Balance</h3><div id="cardPanel" class="helper">No card selected.</div><form id="deductForm" class="form-grid" style="margin-top:14px"><div class="field half"><label>Amount to Deduct</label><input id="deductAmount" type="number" min="1" step="1" placeholder="e.g. 100"></div><div class="field half"><label>Bill Ref / Note</label><input id="deductNote" placeholder="Optional note"></div><div class="field"><div class="btn-row"><button class="btn primary" type="submit">Deduct Now</button></div></div><div class="field"><div id="deductFeedback" class="helper"></div></div></form></div></div>`;
+
+  const video = document.getElementById('scannerVideo');
+  const cardPanelEl = document.getElementById('cardPanel');
+  const deductFeedbackEl = document.getElementById('deductFeedback');
+  const manualCodeEl = document.getElementById('manualCode');
+  const useOutletEl = document.getElementById('useOutlet');
+  const deductAmountEl = document.getElementById('deductAmount');
+  const deductNoteEl = document.getElementById('deductNote');
+  const camMsgEl = document.getElementById('camMsg');
+  let currentCard = null;
+  let videoStream = null;
+  let detector = null;
+  let scanTimer = null;
+
+  async function renderCard(card) {
+    currentCard = card;
+    if (!card) { cardPanelEl.innerHTML = 'Card not found.'; return; }
+    cardPanelEl.innerHTML = `<div class="list-item"><div class="stat-line"><span>Card Code</span><strong>${escapeHtml(card.card_code)}</strong></div><div class="stat-line"><span>Card Label</span><strong>${escapeHtml(card.card_label)}</strong></div><div class="stat-line"><span>Status</span><strong><span class="${getStatusClass(card.status)}">${card.status}</span></strong></div><div class="stat-line"><span>Remaining Balance</span><strong>${formatMoney(card.remaining_balance)}</strong></div><div class="stat-line"><span>Valid Until</span><strong>${escapeHtml(card.valid_until || 'Until empty')}</strong></div><div class="stat-line"><span>Last Used</span><strong>${toDateTimeText(card.last_used_at)}</strong></div></div>`;
+  }
+
+  async function findCurrent() {
+    deductFeedbackEl.textContent = '';
+    currentCard = await getCardByCode(manualCodeEl.value.trim());
+    await renderCard(currentCard);
+  }
+
+  document.getElementById('findCardBtn').onclick = findCurrent;
+
+  async function stopCamera() {
+    if (scanTimer) clearInterval(scanTimer);
+    scanTimer = null;
+    if (videoStream) {
+      videoStream.getTracks().forEach(t => t.stop());
+      videoStream = null;
+    }
+    video.srcObject = null;
+    camMsgEl.textContent = 'Camera stopped.';
+  }
+
+  async function startCamera() {
+    await stopCamera();
+    if (!navigator.mediaDevices?.getUserMedia) {
+      camMsgEl.textContent = 'Browser นี้ไม่รองรับกล้อง กรุณากรอกรหัสการ์ดเอง';
+      return;
+    }
+    try {
+      videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      video.srcObject = videoStream;
+      await video.play();
+      if ('BarcodeDetector' in window) {
+        detector = new BarcodeDetector({ formats: ['qr_code'] });
+        camMsgEl.textContent = 'Camera started. พร้อมสแกน QR';
+        scanTimer = setInterval(async () => {
+          try {
+            const codes = await detector.detect(video);
+            if (codes?.length) {
+              const value = codes[0].rawValue || '';
+              if (value && value !== manualCodeEl.value) {
+                manualCodeEl.value = value.trim();
+                await findCurrent();
+              }
+            }
+          } catch {}
+        }, 700);
+      } else {
+        camMsgEl.textContent = 'เครื่องนี้เปิดกล้องได้ แต่ไม่รองรับสแกน QR อัตโนมัติ กรุณากรอกรหัสเอง';
+      }
+    } catch (err) {
+      camMsgEl.textContent = 'เปิดกล้องไม่สำเร็จ: ' + err.message;
+    }
+  }
+
+  document.getElementById('startCamBtn').onclick = startCamera;
+  document.getElementById('stopCamBtn').onclick = stopCamera;
+
+  document.getElementById('deductForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    deductFeedbackEl.textContent = 'Processing...';
+    try {
+      if (!currentCard) throw new Error('Find a card first.');
+      const result = await deductBalance(currentCard.id, deductAmountEl.value, useOutletEl.value, deductNoteEl.value.trim(), ctx);
+      deductFeedbackEl.textContent = `Deducted ${formatMoney(result.amount)} successfully. Remaining ${formatMoney(result.after)}.`;
+      currentCard = result.card;
+      await renderCard(result.card);
+      deductAmountEl.value = '';
+      deductNoteEl.value = '';
+    } catch (err) {
+      deductFeedbackEl.textContent = err.message || 'Deduct failed';
+    }
+  });
+
+  window.addEventListener('beforeunload', stopCamera);
+</script>
+</body></html>
