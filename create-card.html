@@ -73,8 +73,8 @@
             <div class="btn-row">
               <button class="btn primary" type="button" id="saveBtn">Save Draft</button>
               <button class="btn linkout" type="button" id="savePrintBtn">Save &amp; Print</button>
-              <button class="btn secondary" type="button" id="nextCodeBtn">Refresh Auto Code</button>
-              <button class="btn secondary" type="button" id="clearBtn">Clear</button>
+              <button class="btn secondary" type="button" id="nextCodeBtn">Next Auto Code</button>
+              <button class="btn secondary" type="button" id="clearBtn">Clear Form</button>
             </div>
           </div>
           <div class="field"><div id="feedback" class="helper"></div></div>
@@ -145,12 +145,14 @@
     return max + 1;
   }
 
-  function applyAutoCode() {
+  function applyAutoCode(forceRun = null) {
     if (!autoCode.checked) return;
     const face = Math.max(1, Number(faceValue.value || 0) || 600);
     const batch = sanitizeBatch(batchNo.value);
     batchNo.value = batch;
-    const run = padRun(nextRunning(face, batch));
+    const baseRun = nextRunning(face, batch);
+    const chosenRun = forceRun != null ? Math.max(baseRun, Number(forceRun || 1)) : baseRun;
+    const run = padRun(chosenRun);
     runningNo.value = run;
     cardCode.value = `SV${face}-B${batch}-${run}`;
     cardLabel.value = `Sales Voucher THB ${face} #${run}`;
@@ -252,12 +254,18 @@
 
   async function clearForm() {
     form.reset();
+    autoCode.checked = false;
+    runningNo.value = '';
+    cardCode.value = '';
+    cardLabel.value = '';
+    cardSerial.value = '';
     faceValue.value = 600;
     soldPrice.value = 490;
     batchNo.value = '01';
-    autoCode.checked = true;
+    validUntil.value = '';
+    notesEl.value = '';
     syncReadOnlyState();
-    feedback.textContent = '';
+    feedback.textContent = 'ล้างข้อมูลแล้ว';
     await renderPreview();
   }
 
@@ -275,7 +283,14 @@
   savePrintBtn.addEventListener('click', () => saveCard({ openPrint: true }));
   nextCodeBtn.addEventListener('click', async () => {
     await refreshCardsCache();
-    if (autoCode.checked) applyAutoCode();
+    if (!autoCode.checked) {
+      autoCode.checked = true;
+      syncReadOnlyState();
+    }
+    const currentRun = Number(String(runningNo.value || '').replace(/\D/g, '') || 0);
+    const nextRun = currentRun > 0 ? currentRun + 1 : null;
+    applyAutoCode(nextRun);
+    feedback.textContent = 'สร้างรหัสถัดไปแล้ว';
     await renderPreview();
   });
   clearBtn.addEventListener('click', clearForm);
