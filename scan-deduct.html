@@ -1,16 +1,76 @@
 <!DOCTYPE html>
 <html lang="th">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Scan / Deduct</title><link rel="stylesheet" href="style.css" /></head>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scan / Deduct</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
 <body><div id="app"></div>
 <script type="module">
   import { mountShell } from './auth-guard.js';
-  import { getSettings, getCardByCode, deductBalance, escapeHtml, formatMoney, getStatusClass, toDateTimeText, toDateValue, parseCardCode, isExpiredCard } from './app.js';
-  const ctx = await mountShell('scan-deduct.html','Scan / Deduct','หน้าหลักสำหรับ staff ใช้สแกน QR แล้วตัดยอดคงเหลือของบัตรจาก Firebase จริง');
+  import { getSettings, getCardByCode, deductBalance, escapeHtml, formatMoney, getStatusClass, toDateTimeText, toDateValue, parseCardCode, isExpiredCard, loadScriptOnce } from './app.js';
+
+  const ctx = await mountShell('scan-deduct.html','Scan / Deduct','หน้าหลักสำหรับ staff ใช้สแกน QR แล้วตัดยอดคงเหลือของบัตรจาก Firebase จริง พร้อมรองรับ iPhone / iPad มากขึ้น');
   const settings = await getSettings();
   const el = document.getElementById('pageContent');
-  el.innerHTML = `<div class="split"><div class="card"><h3>Scan Card</h3><div class="btn-row"><button class="btn secondary" id="startCamBtn" type="button">Start Camera</button><button class="btn secondary" id="stopCamBtn" type="button">Stop Camera</button></div><div class="scanner-wrap" style="margin-top:12px"><video id="scannerVideo" playsinline muted></video></div><div class="helper" id="camMsg" style="margin-top:10px">Camera not started yet. You can always search by card code below.</div><div class="form-grid" style="margin-top:12px"><div class="field half"><label>Card Code / Label / Serial</label><input id="manualCode" placeholder="Enter or scan card code"></div><div class="field half"><label>Outlet</label><select id="useOutlet">${(settings.outlets||[]).map(o=>`<option>${escapeHtml(o)}</option>`).join('')}</select></div><div class="field"><div class="btn-row"><button class="btn primary" type="button" id="findCardBtn">Find Card</button></div></div></div></div><div class="card"><h3>Deduct Balance</h3><div id="cardPanel" class="helper">No card selected.</div><form id="deductForm" class="form-grid" style="margin-top:14px"><div class="field half"><label>Amount to Deduct</label><input id="deductAmount" type="number" min="1" step="1" placeholder="e.g. 100"></div><div class="field half"><label>Bill Ref / Note</label><input id="deductNote" placeholder="Optional note"></div><div class="field"><div class="btn-row"><button class="btn primary" type="submit" id="deductSubmit">Deduct Now</button></div></div><div class="field"><div id="deductFeedback" class="helper"></div></div></form></div></div>`;
+  el.innerHTML = `
+    <div class="split">
+      <div class="card">
+        <h3>Scan Card</h3>
+        <div class="btn-row">
+          <button class="btn secondary" id="startCamBtn" type="button">Start Camera</button>
+          <button class="btn secondary" id="stopCamBtn" type="button">Stop Camera</button>
+        </div>
+        <div class="form-grid" style="margin-top:12px">
+          <div class="field half">
+            <label>Camera</label>
+            <select id="cameraSelect"><option value="">Auto select camera</option></select>
+          </div>
+          <div class="field half">
+            <label>Outlet</label>
+            <select id="useOutlet">${(settings.outlets||[]).map(o=>`<option>${escapeHtml(o)}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div id="scannerRegion" class="scanner-wrap scanner-region" style="margin-top:12px"></div>
+        <div class="helper" id="camMsg" style="margin-top:10px">Camera not started yet. รองรับ manual search ได้เสมอ</div>
+        <div class="small-note" style="margin-top:8px">บน iPhone / iPad ควรเปิดผ่าน HTTPS และกด Allow Camera เมื่อระบบถาม</div>
+        <div class="form-grid" style="margin-top:12px">
+          <div class="field">
+            <label>Card Code / Label / Serial</label>
+            <input id="manualCode" placeholder="Enter or scan card code">
+          </div>
+          <div class="field">
+            <div class="btn-row">
+              <button class="btn primary" type="button" id="findCardBtn">Find Card</button>
+              <button class="btn secondary" type="button" id="clearScanBtn">Clear</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Deduct Balance</h3>
+        <div id="cardPanel" class="helper">No card selected.</div>
+        <form id="deductForm" class="form-grid" style="margin-top:14px">
+          <div class="field half">
+            <label>Amount to Deduct</label>
+            <input id="deductAmount" type="number" min="1" step="1" placeholder="e.g. 100">
+          </div>
+          <div class="field half">
+            <label>Bill Ref / Note</label>
+            <input id="deductNote" placeholder="Optional note">
+          </div>
+          <div class="field">
+            <div class="btn-row">
+              <button class="btn primary" type="submit" id="deductSubmit">Deduct Now</button>
+              <button class="btn secondary" type="button" id="scanNextBtn">Scan Next Card</button>
+            </div>
+          </div>
+          <div class="field"><div id="deductFeedback" class="helper"></div></div>
+        </form>
+      </div>
+    </div>`;
 
-  const video = document.getElementById('scannerVideo');
   const cardPanelEl = document.getElementById('cardPanel');
   const deductFeedbackEl = document.getElementById('deductFeedback');
   const manualCodeEl = document.getElementById('manualCode');
@@ -19,13 +79,37 @@
   const deductNoteEl = document.getElementById('deductNote');
   const deductSubmitEl = document.getElementById('deductSubmit');
   const camMsgEl = document.getElementById('camMsg');
+  const scannerRegionEl = document.getElementById('scannerRegion');
+  const cameraSelectEl = document.getElementById('cameraSelect');
+
   let currentCard = null;
-  let videoStream = null;
-  let detector = null;
-  let scanTimer = null;
+  let html5Qr = null;
+  let scannerStarted = false;
+  let lastDecoded = '';
+  let lastDecodeAt = 0;
 
   function updateDeductState(card) {
     deductSubmitEl.disabled = !(card && card.status === 'active' && !isExpiredCard(card));
+  }
+
+  function cameraLabelPriority(label = '') {
+    const l = label.toLowerCase();
+    if (/(back|rear|environment|wide)/.test(l)) return 3;
+    if (/(front|user)/.test(l)) return 1;
+    return 2;
+  }
+
+  async function populateCameraOptions() {
+    try {
+      await loadScriptOnce('https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js', () => !!window.Html5Qrcode);
+      const cameras = await window.Html5Qrcode.getCameras();
+      const sorted = [...cameras].sort((a, b) => cameraLabelPriority(b.label) - cameraLabelPriority(a.label));
+      cameraSelectEl.innerHTML = `<option value="">Auto select camera</option>${sorted.map(cam => `<option value="${escapeHtml(cam.id)}">${escapeHtml(cam.label || cam.id)}</option>`).join('')}`;
+      return sorted;
+    } catch (err) {
+      camMsgEl.textContent = 'Cannot list cameras: ' + (err.message || 'Unknown error');
+      return [];
+    }
   }
 
   async function renderCard(card) {
@@ -36,7 +120,15 @@
       return;
     }
     const expired = isExpiredCard(card);
-    cardPanelEl.innerHTML = `<div class="list-item"><div class="stat-line"><span>Card Code</span><strong>${escapeHtml(card.card_code)}</strong></div><div class="stat-line"><span>Card Label</span><strong>${escapeHtml(card.card_label)}</strong></div><div class="stat-line"><span>Status</span><strong><span class="${getStatusClass(card.status)}">${card.status}${expired ? ' / expired' : ''}</span></strong></div><div class="stat-line"><span>Remaining Balance</span><strong>${formatMoney(card.remaining_balance)}</strong></div><div class="stat-line"><span>Valid Until</span><strong>${escapeHtml(toDateValue(card.valid_until) || 'Until empty')}</strong></div><div class="stat-line"><span>Last Used</span><strong>${toDateTimeText(card.last_used_at)}</strong></div></div>`;
+    cardPanelEl.innerHTML = `
+      <div class="list-item">
+        <div class="stat-line"><span>Card Code</span><strong>${escapeHtml(card.card_code)}</strong></div>
+        <div class="stat-line"><span>Card Label</span><strong>${escapeHtml(card.card_label || '-')}</strong></div>
+        <div class="stat-line"><span>Status</span><strong><span class="${getStatusClass(card.status)}">${escapeHtml(card.status)}${expired ? ' / expired' : ''}</span></strong></div>
+        <div class="stat-line"><span>Remaining Balance</span><strong>${formatMoney(card.remaining_balance)}</strong></div>
+        <div class="stat-line"><span>Valid Until</span><strong>${escapeHtml(toDateValue(card.valid_until) || 'Until empty')}</strong></div>
+        <div class="stat-line"><span>Last Used</span><strong>${toDateTimeText(card.last_used_at)}</strong></div>
+      </div>`;
     updateDeductState(card);
   }
 
@@ -44,65 +136,101 @@
     deductFeedbackEl.textContent = '';
     const lookup = parseCardCode(manualCodeEl.value.trim());
     manualCodeEl.value = lookup;
+    if (!lookup) {
+      await renderCard(null);
+      return;
+    }
     currentCard = await getCardByCode(lookup);
     await renderCard(currentCard);
   }
 
+  async function handleDecoded(rawText) {
+    const value = parseCardCode(rawText || '');
+    const now = Date.now();
+    if (!value) return;
+    if (value === lastDecoded && (now - lastDecodeAt) < 1800) return;
+    lastDecoded = value;
+    lastDecodeAt = now;
+    manualCodeEl.value = value;
+    await findCurrent();
+    deductFeedbackEl.textContent = 'QR scanned successfully. ตรวจสอบบัตรแล้วค่อยกด Deduct.';
+    await stopCamera();
+  }
+
+  async function stopCamera() {
+    try {
+      if (html5Qr && scannerStarted) {
+        await html5Qr.stop();
+        await html5Qr.clear();
+      }
+    } catch {}
+    html5Qr = null;
+    scannerStarted = false;
+    scannerRegionEl.innerHTML = '';
+    camMsgEl.textContent = 'Camera stopped.';
+  }
+
+  async function startCamera() {
+    await stopCamera();
+    if (!window.isSecureContext) {
+      camMsgEl.textContent = 'Camera requires HTTPS or localhost.';
+      return;
+    }
+    try {
+      await loadScriptOnce('https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js', () => !!window.Html5Qrcode);
+      const cameras = await populateCameraOptions();
+      const selected = cameraSelectEl.value;
+      const preferred = selected || cameras[0]?.id;
+      if (!preferred) throw new Error('No camera found on this device.');
+      html5Qr = new window.Html5Qrcode('scannerRegion');
+      await html5Qr.start(
+        preferred,
+        {
+          fps: 10,
+          qrbox: { width: 220, height: 220 },
+          aspectRatio: 1.333334,
+          rememberLastUsedCamera: true,
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+        },
+        async (decodedText) => { await handleDecoded(decodedText); },
+        () => {}
+      );
+      scannerStarted = true;
+      camMsgEl.textContent = 'Camera started. พร้อมสแกน QR';
+    } catch (err) {
+      camMsgEl.textContent = 'เปิดกล้องไม่สำเร็จ: ' + (err.message || 'Unknown error');
+    }
+  }
+
   document.getElementById('findCardBtn').onclick = findCurrent;
+  document.getElementById('clearScanBtn').onclick = async () => {
+    manualCodeEl.value = '';
+    deductAmountEl.value = '';
+    deductNoteEl.value = '';
+    deductFeedbackEl.textContent = '';
+    lastDecoded = '';
+    await renderCard(null);
+  };
+  document.getElementById('scanNextBtn').onclick = async () => {
+    manualCodeEl.value = '';
+    deductAmountEl.value = '';
+    deductNoteEl.value = '';
+    deductFeedbackEl.textContent = '';
+    lastDecoded = '';
+    await renderCard(null);
+    await startCamera();
+  };
   manualCodeEl.addEventListener('keydown', async (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       await findCurrent();
     }
   });
-
-  async function stopCamera() {
-    if (scanTimer) clearInterval(scanTimer);
-    scanTimer = null;
-    if (videoStream) {
-      videoStream.getTracks().forEach(t => t.stop());
-      videoStream = null;
-    }
-    video.srcObject = null;
-    camMsgEl.textContent = 'Camera stopped.';
-  }
-
-  async function startCamera() {
-    await stopCamera();
-    if (!navigator.mediaDevices?.getUserMedia) {
-      camMsgEl.textContent = 'Browser นี้ไม่รองรับกล้อง กรุณากรอกรหัสการ์ดเอง';
-      return;
-    }
-    try {
-      videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
-      video.srcObject = videoStream;
-      await video.play();
-      if ('BarcodeDetector' in window) {
-        detector = new BarcodeDetector({ formats: ['qr_code'] });
-        camMsgEl.textContent = 'Camera started. พร้อมสแกน QR';
-        scanTimer = setInterval(async () => {
-          try {
-            const codes = await detector.detect(video);
-            if (codes?.length) {
-              const value = parseCardCode(codes[0].rawValue || '');
-              if (value && value !== manualCodeEl.value) {
-                manualCodeEl.value = value.trim();
-                await findCurrent();
-              }
-            }
-          } catch {}
-        }, 700);
-      } else {
-        camMsgEl.textContent = 'เครื่องนี้เปิดกล้องได้ แต่ยังไม่รองรับสแกน QR อัตโนมัติ กรุณากรอกรหัสเอง';
-      }
-    } catch (err) {
-      camMsgEl.textContent = 'เปิดกล้องไม่สำเร็จ: ' + err.message;
-    }
-  }
-
   document.getElementById('startCamBtn').onclick = startCamera;
   document.getElementById('stopCamBtn').onclick = stopCamera;
+  cameraSelectEl.onchange = async () => { if (scannerStarted) await startCamera(); };
   updateDeductState(null);
+  await populateCameraOptions();
 
   document.getElementById('deductForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -124,4 +252,5 @@
 
   window.addEventListener('beforeunload', stopCamera);
 </script>
-</body></html>
+</body>
+</html>

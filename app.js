@@ -7,9 +7,6 @@ import {
   setDoc,
   updateDoc,
   addDoc,
-  query,
-  where,
-  limit,
   serverTimestamp,
   runTransaction
 } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
@@ -34,6 +31,10 @@ function tsValue(v) {
   return 0;
 }
 
+function safeString(v) {
+  return String(v ?? "").trim();
+}
+
 export function formatMoney(v) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "THB", maximumFractionDigits: 0 }).format(Number(v || 0));
 }
@@ -55,7 +56,10 @@ export function toDateValue(input) {
 
 export function toDateTimeText(input) {
   if (!input) return "-";
-  if (typeof input === "string") return new Date(input).toLocaleString();
+  if (typeof input === "string") {
+    const d = new Date(input);
+    return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString();
+  }
   if (input?.toDate) return input.toDate().toLocaleString();
   return "-";
 }
@@ -65,11 +69,11 @@ export function todayBusinessDate() {
 }
 
 export function parseCardCode(raw = "") {
-  const value = String(raw || "").trim();
+  const value = safeString(raw);
   if (!value) return "";
   try {
     const url = new URL(value);
-    return url.searchParams.get("code") || url.searchParams.get("card") || url.pathname.split("/").filter(Boolean).pop() || value;
+    return safeString(url.searchParams.get("code") || url.searchParams.get("card") || url.pathname.split("/").filter(Boolean).pop() || value);
   } catch {
     return value.replace(/^card:/i, "").trim();
   }
@@ -82,12 +86,18 @@ function txnFromSnap(snap) {
   return { id: snap.id, ...snap.data() };
 }
 
+function matchesDateRange(dateValue, fromDate, toDate) {
+  const d = safeString(dateValue).slice(0, 10);
+  if (!d) return false;
+  if (fromDate && d < fromDate) return false;
+  if (toDate && d > toDate) return false;
+  return true;
+}
+
 export async function getSettings() {
   const ref = doc(db, saleCardCollections.settings, "app");
   const snap = await getDoc(ref);
-  if (!snap.exists()) {
-    return { ...DEFAULT_SETTINGS };
-  }
+  if (!snap.exists()) return { ...DEFAULT_SETTINGS };
   return { ...DEFAULT_SETTINGS, ...snap.data() };
 }
 
@@ -125,12 +135,9 @@ export async function getCardById(id) {
 export async function getCardByCode(code) {
   const trimmed = parseCardCode(code);
   if (!trimmed) return null;
-  const cardsRef = collection(db, saleCardCollections.cards);
-  for (const field of ["card_code", "card_label", "card_serial"]) {
-    const snap = await getDocs(query(cardsRef, where(field, "==", trimmed), limit(1)));
-    if (!snap.empty) return cardFromSnap(snap.docs[0]);
-  }
-  return null;
+  const cardsSnap = await getDocs(collection(db, saleCardCollections.cards));
+  const rows = cardsSnap.docs.map(cardFromSnap);
+  return rows.find(c => [c.card_code, c.card_label, c.card_serial].map(parseCardCode).includes(trimmed)) || null;
 }
 
 export async function createCard(data, actor) {
@@ -145,8 +152,8 @@ export async function createCard(data, actor) {
   const actorName = actor.profile?.name || actor.profile?.employee_id || actor.user.email || "User";
   const payload = {
     card_code: code,
-    card_label: data.card_label.trim(),
-    card_serial: data.card_serial?.trim() || "",
+    card_label: safeString(data.card_label),
+    card_serial: safeString(data.card_serial),
     face_value: faceValue,
     sold_price: soldPrice,
     remaining_balance: 0,
@@ -154,7 +161,7 @@ export async function createCard(data, actor) {
     status: "draft",
     outlet_scope: data.outlet_scope || "Aroonsawat",
     valid_until: data.valid_until || "",
-    notes: data.notes?.trim() || "",
+    notes: safeString(data.notes),
     created_by_uid: actor.user.uid,
     created_by_name: actorName,
     created_at: serverTimestamp(),
@@ -200,13 +207,7 @@ export async function activateAndSell(cardId, soldPrice, outlet, note, actor) {
       created_at: serverTimestamp(),
       voided: false
     });
-    return {
-      id: snap.id,
-      ...card,
-      sold_price: actualSoldPrice,
-      remaining_balance: Number(card.face_value),
-      status: "active"
-    };
+    return { id: snap.id, ...card, sold_price: actualSoldPrice, remaining_balance: Number(card.face_value), status: "active" };
   });
 }
 
@@ -260,15 +261,56 @@ export async function deductBalance(cardId, amount, outlet, note, actor) {
   });
 }
 
+export async function adjustBalance(cardId, delta, note, actor) {
+  const amt = Number(delta);
+  if (!amt) throw new Error("Adjustment amount must not be 0.");
+  const cardRef = doc(db, saleCardCollections.cards, cardId);
+  const txnsRef = collection(db, saleCardCollections.transactions);
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(cardRef);
+    if (!snap.exists()) throw new Error("Card not found.");
+    const card = snap.data();
+    if (["void", "expired"].includes(card.status)) throw new Error("This card cannot be adjusted.");
+    const before = Number(card.remaining_balance || 0);
+    const after = before + amt;
+    if (after < 0) throw new Error("Adjustment would make balance negative.");
+    const actorName = actor.profile?.name || actor.profile?.employee_id || actor.user.email || "User";
+    const nextStatus = after === 0 ? "empty" : (card.status === "disabled" ? "disabled" : "active");
+    tx.update(cardRef, {
+      remaining_balance: after,
+      status: nextStatus,
+      last_used_at: serverTimestamp(),
+      last_used_by_uid: actor.user.uid,
+      last_used_by_name: actorName,
+      updated_at: serverTimestamp()
+    });
+    const txnRef = doc(txnsRef);
+    tx.set(txnRef, {
+      card_id: snap.id,
+      card_code: card.card_code,
+      txn_type: amt > 0 ? "adjustment_plus" : "adjustment_minus",
+      amount: Math.abs(amt),
+      balance_before: before,
+      balance_after: after,
+      outlet: card.outlet_scope || "Aroonsawat",
+      staff_uid: actor.user.uid,
+      staff_name: actorName,
+      business_date: todayBusinessDate(),
+      note: note || (amt > 0 ? "Balance increased" : "Balance decreased"),
+      created_at: serverTimestamp(),
+      voided: false
+    });
+    return { before, after, amount: amt };
+  });
+}
+
 export async function updateCardStatus(cardId, status, actor, note = "") {
   const ref = doc(db, saleCardCollections.cards, cardId);
   const snap = await getDoc(ref);
   if (!snap.exists()) throw new Error("Card not found.");
   const card = snap.data();
   const patch = { status, updated_at: serverTimestamp() };
-  if (status === "active" && Number(card.remaining_balance || 0) <= 0) {
-    throw new Error("Cannot enable a card with zero balance. Use adjustment first.");
-  }
+  if (status === "active" && Number(card.remaining_balance || 0) <= 0) throw new Error("Cannot enable a card with zero balance. Use adjustment first.");
   await updateDoc(ref, patch);
   await addDoc(collection(db, saleCardCollections.transactions), {
     card_id: snap.id,
@@ -292,10 +334,14 @@ export async function listTransactions(filters = {}) {
   let rows = snap.docs.map(txnFromSnap).sort((a, b) => tsValue(b.created_at) - tsValue(a.created_at));
   if (filters.query) {
     const needle = filters.query.toLowerCase();
-    rows = rows.filter(t => [t.card_code, t.staff_name, t.outlet, t.note].join(" ").toLowerCase().includes(needle));
+    rows = rows.filter(t => [t.card_code, t.staff_name, t.outlet, t.note, t.txn_type].join(" ").toLowerCase().includes(needle));
   }
   if (filters.cardId) rows = rows.filter(t => t.card_id === filters.cardId);
-  if (filters.outlet) rows = rows.filter(t => t.outlet === filters.outlet);
+  if (filters.outlet) rows = rows.filter(t => String(t.outlet || "").toLowerCase().includes(String(filters.outlet).toLowerCase()));
+  if (filters.type) rows = rows.filter(t => t.txn_type === filters.type);
+  if (filters.staff) rows = rows.filter(t => String(t.staff_name || "").toLowerCase().includes(String(filters.staff).toLowerCase()));
+  if (filters.fromDate || filters.toDate) rows = rows.filter(t => matchesDateRange(t.business_date || toDateValue(t.created_at), filters.fromDate, filters.toDate));
+  if (filters.onlyActiveVoidable) rows = rows.filter(t => t.txn_type === "debit" && !t.voided);
   return rows;
 }
 
@@ -303,54 +349,112 @@ export async function getCardTransactions(cardId) {
   return listTransactions({ cardId });
 }
 
-export async function dashboardData() {
+export async function voidDebitTransaction(txnId, actor, note = "") {
+  const txnRef = doc(db, saleCardCollections.transactions, txnId);
+  const txnsRef = collection(db, saleCardCollections.transactions);
+  return runTransaction(db, async (tx) => {
+    const txnSnap = await tx.get(txnRef);
+    if (!txnSnap.exists()) throw new Error("Transaction not found.");
+    const txn = txnSnap.data();
+    if (txn.txn_type !== "debit") throw new Error("Only debit transactions can be voided.");
+    if (txn.voided) throw new Error("This transaction has already been voided.");
+    const cardRef = doc(db, saleCardCollections.cards, txn.card_id);
+    const cardSnap = await tx.get(cardRef);
+    if (!cardSnap.exists()) throw new Error("Card not found.");
+    const card = cardSnap.data();
+    const before = Number(card.remaining_balance || 0);
+    const after = before + Number(txn.amount || 0);
+    const actorName = actor.profile?.name || actor.profile?.employee_id || actor.user.email || "User";
+    tx.update(cardRef, {
+      remaining_balance: after,
+      status: after > 0 && card.status === "empty" ? "active" : card.status,
+      updated_at: serverTimestamp(),
+      last_used_at: serverTimestamp(),
+      last_used_by_uid: actor.user.uid,
+      last_used_by_name: actorName
+    });
+    tx.update(txnRef, {
+      voided: true,
+      voided_at: serverTimestamp(),
+      voided_by_uid: actor.user.uid,
+      voided_by_name: actorName
+    });
+    const reversalRef = doc(txnsRef);
+    tx.set(reversalRef, {
+      card_id: txn.card_id,
+      card_code: txn.card_code,
+      txn_type: "void_debit",
+      amount: Number(txn.amount || 0),
+      balance_before: before,
+      balance_after: after,
+      outlet: txn.outlet || card.outlet_scope || "Aroonsawat",
+      staff_uid: actor.user.uid,
+      staff_name: actorName,
+      business_date: todayBusinessDate(),
+      note: note || `Void debit ${txn.id}`,
+      created_at: serverTimestamp(),
+      voided: false,
+      void_ref_txn_id: txnId
+    });
+    return { before, after, amount: Number(txn.amount || 0) };
+  });
+}
+
+export async function dashboardData(filters = {}) {
   const cards = await listCards({});
-  const txns = await listTransactions({});
+  const txns = await listTransactions({ fromDate: filters.fromDate, toDate: filters.toDate, outlet: filters.outlet });
   const today = todayBusinessDate();
+  const fromDate = filters.fromDate || today;
+  const toDate = filters.toDate || today;
+  const inRange = txns.filter(t => matchesDateRange(t.business_date || toDateValue(t.created_at), fromDate, toDate));
+  const salesRows = inRange.filter(t => t.txn_type === "sale");
+  const debitRows = inRange.filter(t => t.txn_type === "debit");
 
-  const salesTodayRows = txns.filter(t => t.txn_type === "sale" && t.business_date === today);
-  const debitTodayRows = txns.filter(t => t.txn_type === "debit" && t.business_date === today);
-
+  const scopedCards = filters.outlet ? cards.filter(c => String(c.outlet_scope || "").toLowerCase().includes(String(filters.outlet).toLowerCase())) : cards;
   const stats = {
-    salesToday: salesTodayRows.reduce((sum, row) => sum + Number(row.amount || 0), 0),
-    cardsSoldToday: salesTodayRows.length,
-    redeemedToday: debitTodayRows.reduce((sum, row) => sum + Number(row.amount || 0), 0),
-    outstanding: cards.filter(c => c.status === "active").reduce((sum, row) => sum + Number(row.remaining_balance || 0), 0),
-    activeCards: cards.filter(c => c.status === "active").length,
-    emptyCards: cards.filter(c => c.status === "empty").length,
-    draftCards: cards.filter(c => c.status === "draft").length,
-    disabledCards: cards.filter(c => c.status === "disabled").length
+    salesToday: salesRows.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    cardsSoldToday: salesRows.length,
+    redeemedToday: debitRows.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    outstanding: scopedCards.filter(c => ["active", "disabled"].includes(c.status)).reduce((sum, row) => sum + Number(row.remaining_balance || 0), 0),
+    activeCards: scopedCards.filter(c => c.status === "active").length,
+    emptyCards: scopedCards.filter(c => c.status === "empty").length,
+    draftCards: scopedCards.filter(c => c.status === "draft").length,
+    disabledCards: scopedCards.filter(c => c.status === "disabled").length
   };
 
-  const byOutlet = Object.entries(debitTodayRows.reduce((acc, row) => {
-    acc[row.outlet || "Unspecified"] = (acc[row.outlet || "Unspecified"] || 0) + Number(row.amount || 0);
+  const byOutlet = Object.entries(debitRows.reduce((acc, row) => {
+    const key = row.outlet || "Unspecified";
+    acc[key] = (acc[key] || 0) + Number(row.amount || 0);
     return acc;
   }, {})).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
 
-  const byStaff = Object.entries(debitTodayRows.reduce((acc, row) => {
-    acc[row.staff_name || "Unknown"] = (acc[row.staff_name || "Unknown"] || 0) + Number(row.amount || 0);
+  const byStaff = Object.entries(debitRows.reduce((acc, row) => {
+    const key = row.staff_name || "Unknown";
+    acc[key] = (acc[key] || 0) + Number(row.amount || 0);
     return acc;
   }, {})).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
 
-  const recentTransactions = txns.slice(0, 12);
-  const lowBalanceCards = cards.filter(c => Number(c.remaining_balance || 0) > 0 && Number(c.remaining_balance || 0) <= 100).sort((a, b) => Number(a.remaining_balance || 0) - Number(b.remaining_balance || 0));
-  const nearExpiryCards = cards.filter(c => c.valid_until).sort((a, b) => String(a.valid_until).localeCompare(String(b.valid_until))).slice(0, 10);
-  const recentlyEmptied = cards.filter(c => c.status === "empty").sort((a, b) => tsValue(b.last_used_at) - tsValue(a.last_used_at)).slice(0, 10);
+  const recentTransactions = inRange.slice(0, 12);
+  const lowBalanceCards = scopedCards.filter(c => Number(c.remaining_balance || 0) > 0 && Number(c.remaining_balance || 0) <= 100).sort((a, b) => Number(a.remaining_balance || 0) - Number(b.remaining_balance || 0));
+  const nearExpiryCards = scopedCards.filter(c => c.valid_until).sort((a, b) => String(a.valid_until).localeCompare(String(b.valid_until))).slice(0, 10);
+  const recentlyEmptied = scopedCards.filter(c => c.status === "empty").sort((a, b) => tsValue(b.last_used_at) - tsValue(a.last_used_at)).slice(0, 10);
 
   const trendDays = [];
+  const end = new Date();
   for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
+    const d = new Date(end);
+    d.setDate(end.getDate() - i);
     const key = d.toISOString().slice(0, 10);
+    const dayRows = txns.filter(t => matchesDateRange(t.business_date || toDateValue(t.created_at), key, key));
     trendDays.push({
       key,
       label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      sales: txns.filter(t => t.txn_type === "sale" && t.business_date === key).reduce((sum, row) => sum + Number(row.amount || 0), 0),
-      debit: txns.filter(t => t.txn_type === "debit" && t.business_date === key).reduce((sum, row) => sum + Number(row.amount || 0), 0)
+      sales: dayRows.filter(t => t.txn_type === "sale").reduce((sum, row) => sum + Number(row.amount || 0), 0),
+      debit: dayRows.filter(t => t.txn_type === "debit").reduce((sum, row) => sum + Number(row.amount || 0), 0)
     });
   }
 
-  return { cards, txns, stats, byOutlet, byStaff, recentTransactions, lowBalanceCards, nearExpiryCards, recentlyEmptied, trendDays };
+  return { cards: scopedCards, txns: inRange, stats, byOutlet, byStaff, recentTransactions, lowBalanceCards, nearExpiryCards, recentlyEmptied, trendDays, range: { fromDate, toDate } };
 }
 
 export async function listUsers() {
@@ -368,4 +472,118 @@ export async function signInByEmployeeId(employeeId, password) {
   if (!loginIndex.active) throw new Error("บัญชีนี้ถูกปิดการใช้งาน");
   if (!loginIndex.email) throw new Error("บัญชีนี้ยังไม่ได้ผูกอีเมล");
   await signInWithEmailAndPassword(auth, loginIndex.email, password);
+}
+
+const externalScriptCache = new Map();
+
+export function loadScriptOnce(src, checkFn = null) {
+  if (checkFn?.()) return Promise.resolve(true);
+  if (externalScriptCache.has(src)) return externalScriptCache.get(src);
+  const promise = new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[data-src="${src}"]`);
+    if (existing) {
+      existing.addEventListener('load', () => resolve(true), { once: true });
+      existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true });
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.dataset.src = src;
+    script.onload = () => resolve(true);
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.head.appendChild(script);
+  });
+  externalScriptCache.set(src, promise);
+  return promise;
+}
+
+export async function ensureXLSX() {
+  if (window.XLSX) return window.XLSX;
+  await loadScriptOnce('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js', () => !!window.XLSX);
+  if (!window.XLSX) throw new Error('XLSX library not available.');
+  return window.XLSX;
+}
+
+export async function ensureJsPdf() {
+  if (window.jspdf?.jsPDF) return window.jspdf.jsPDF;
+  await loadScriptOnce('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js', () => !!window.jspdf?.jsPDF);
+  if (!window.jspdf?.jsPDF) throw new Error('jsPDF library not available.');
+  return window.jspdf.jsPDF;
+}
+
+export async function ensureAutoTable() {
+  const jsPDF = await ensureJsPdf();
+  if (typeof jsPDF.API.autoTable === 'function') return jsPDF;
+  await loadScriptOnce('https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js', () => typeof window.jspdf?.jsPDF?.API?.autoTable === 'function');
+  return window.jspdf.jsPDF;
+}
+
+export async function ensureQrCodeLib() {
+  if (window.QRCode) return window.QRCode;
+  await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js', () => !!window.QRCode);
+  if (!window.QRCode) throw new Error('QR code library not available.');
+  return window.QRCode;
+}
+
+export async function exportSheetsXlsx(fileName, sheets) {
+  const XLSX = await ensureXLSX();
+  const wb = XLSX.utils.book_new();
+  (sheets || []).forEach((sheet, index) => {
+    const name = safeString(sheet?.name) || `Sheet${index + 1}`;
+    const rows = Array.isArray(sheet?.rows) ? sheet.rows : [];
+    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Info: 'No data' }]);
+    XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+  });
+  XLSX.writeFile(wb, fileName || `sales-voucher-${todayBusinessDate()}.xlsx`);
+}
+
+export async function exportPdfReport({ fileName, title, subtitle = '', summaryRows = [], tables = [] }) {
+  const jsPDF = await ensureAutoTable();
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const marginX = 40;
+  let cursorY = 42;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text(title || 'Sales Voucher Report', marginX, cursorY);
+  cursorY += 18;
+  if (subtitle) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text(String(subtitle), marginX, cursorY);
+    cursorY += 18;
+  }
+  if (summaryRows.length) {
+    doc.autoTable({
+      startY: cursorY,
+      theme: 'grid',
+      styles: { fontSize: 9 },
+      head: [['Metric', 'Value']],
+      body: summaryRows.map(r => [String(r[0] ?? ''), String(r[1] ?? '')]),
+      margin: { left: marginX, right: marginX }
+    });
+    cursorY = doc.lastAutoTable.finalY + 18;
+  }
+  (tables || []).forEach((table, index) => {
+    if (cursorY > 700) {
+      doc.addPage();
+      cursorY = 42;
+    }
+    if (table?.title) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text(String(table.title), marginX, cursorY);
+      cursorY += 10;
+    }
+    doc.autoTable({
+      startY: cursorY + 6,
+      theme: 'striped',
+      styles: { fontSize: 8, cellPadding: 4 },
+      head: [Array.isArray(table?.head) ? table.head.map(v => String(v)) : []],
+      body: Array.isArray(table?.body) ? table.body.map(row => row.map(v => String(v ?? ''))) : [['No data']],
+      margin: { left: marginX, right: marginX }
+    });
+    cursorY = doc.lastAutoTable.finalY + 18;
+  });
+  doc.save(fileName || `sales-voucher-${todayBusinessDate()}.pdf`);
 }

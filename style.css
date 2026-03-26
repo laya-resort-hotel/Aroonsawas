@@ -117,3 +117,54 @@ tr:hover td { background: rgba(255,255,255,.02); }
 @media (max-width: 760px) {
   .scanner-wrap video { height:260px; }
 }
+
+.scanner-region { min-height: 340px; padding: 12px; }
+.scanner-region #reader, .scanner-region > div { width: 100% !important; }
+.scanner-region video { border-radius: 14px; }
+.scanner-region img { max-width: 100%; }
+.print-card-stage { display:flex; justify-content:center; padding: 4px 0 24px; }
+.sale-card-mockup { display:grid; grid-template-columns: repeat(2, 1fr); gap: 24px; align-items:start; }
+.sale-card-front, .sale-card-back {
+  position: relative;
+  width: 85.6mm;
+  height: 54mm;
+  color: #f6e9c7;
+  border-radius: 14px;
+  overflow: hidden;
+  padding: 12px;
+  background: radial-gradient(circle at top right, rgba(212,181,106,.22), rgba(212,181,106,0) 35%), linear-gradient(135deg,#08281f,#183e33 55%,#244d40);
+  box-shadow: 0 18px 36px rgba(0,0,0,.32);
+}
+.sale-card-border {
+  position:absolute; inset:8px; border:1.2px solid rgba(212,181,106,.85); border-radius:10px; pointer-events:none;
+}
+.sale-card-header { position:relative; z-index:1; display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+.sale-card-brand { font-size: 10pt; font-weight: 800; letter-spacing: .04em; }
+.sale-card-subtitle { font-size: 8pt; opacity: .92; margin-top: 2px; }
+.sale-card-value { font-size: 17pt; font-weight: 800; white-space: nowrap; }
+.sale-card-body { position:relative; z-index:1; display:grid; grid-template-columns: 154px 1fr; gap: 12px; align-items:center; margin-top: 10px; }
+.sale-card-qr-wrap { background: #fff; padding: 8px; border-radius: 10px; width: 148px; height: 148px; display:grid; place-items:center; }
+.sale-card-qr > img, .sale-card-qr > canvas { width: 132px !important; height: 132px !important; }
+.sale-card-front-meta { display:grid; gap:8px; }
+.sale-card-line { display:grid; gap:3px; }
+.sale-card-line span { font-size: 7.6pt; opacity:.8; }
+.sale-card-line strong { font-size: 9.2pt; color:#fff7df; }
+.sale-card-footer { position:absolute; left:12px; right:12px; bottom:12px; z-index:1; font-size: 8pt; font-weight:700; }
+.sale-card-back-title { position:relative; z-index:1; font-size: 14pt; font-weight: 800; margin-bottom: 10px; }
+.sale-card-policy { position:relative; z-index:1; font-size: 9pt; margin-bottom: 6px; }
+.sale-card-terms-title { position:relative; z-index:1; font-size: 10pt; font-weight: 700; margin: 10px 0 4px; }
+.sale-card-terms { position:relative; z-index:1; margin: 0; padding-left: 18px; font-size: 7.8pt; line-height: 1.35; display:grid; gap:4px; }
+.sale-card-serial { position:absolute; left:12px; right:12px; bottom:12px; z-index:1; font-size: 9pt; font-weight:700; }
+.print-only { display:none; }
+
+@media (max-width: 980px) {
+  .sale-card-mockup { grid-template-columns: 1fr; }
+}
+@media print {
+  body { background: #fff; }
+  .topbar, .navbar, .hero, #printToolbar, .no-print { display: none !important; }
+  .page { max-width: none; margin: 0; padding: 0; }
+  .print-card-stage { padding: 0; }
+  .sale-card-mockup { gap: 8mm; }
+  .sale-card-front, .sale-card-back { box-shadow: none; page-break-inside: avoid; }
+}

@@ -66,7 +66,7 @@
     feedback.textContent = 'Saving draft to Firebase...';
     try {
       const card = await createCard({ card_code: cardCode.value, card_label: cardLabel.value, card_serial: cardSerial.value, face_value: faceValue.value, sold_price: soldPrice.value, outlet_scope: outletScope.value, valid_until: validUntil.value, notes: notesEl.value }, ctx);
-      feedback.textContent = `Saved draft ${card.card_code} successfully.`;
+      feedback.innerHTML = `Saved draft <strong>${escapeHtml(card.card_code)}</strong> successfully. <a href="card-detail.html?id=${encodeURIComponent(card.id)}">Open detail</a> · <a href="print-card-template.html?id=${encodeURIComponent(card.id)}" target="_blank" rel="noopener noreferrer">Print template</a>`;
       e.target.reset();
       renderPreview();
     } catch (err) {

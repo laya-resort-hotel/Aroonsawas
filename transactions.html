@@ -1,21 +1,110 @@
 <!DOCTYPE html>
 <html lang="th">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Transactions</title><link rel="stylesheet" href="style.css" /></head>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Transactions</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
 <body><div id="app"></div>
 <script type="module">
   import { mountShell, roleCan } from './auth-guard.js';
-  import { listTransactions, formatMoney, escapeHtml, toDateTimeText } from './app.js';
+  import { listTransactions, voidDebitTransaction, formatMoney, escapeHtml, toDateTimeText, todayBusinessDate, exportSheetsXlsx, exportPdfReport } from './app.js';
   const ctx = await mountShell('transactions.html','Transactions','ตรวจสอบรายการ sale / debit / adjustment ของระบบ Sales Voucher v6');
   if (!ctx || !roleCan(ctx.profile.role, 'transactions')) location.href = 'index.html';
+  const today = todayBusinessDate();
+  let lastRows = [];
   const el = document.getElementById('pageContent');
-  el.innerHTML = `<div class="card"><div class="form-grid"><div class="field half"><label>Search</label><input id="query" placeholder="Card code, staff, outlet, note"></div><div class="field half"><label>Transaction Type</label><select id="typeFilter"><option value="">All</option><option>sale</option><option>debit</option><option>refund</option><option>adjustment_plus</option><option>adjustment_minus</option><option>void_sale</option><option>void_debit</option></select></div></div><div id="txBox" class="helper">Loading...</div></div>`;
+  el.innerHTML = `
+    <div class="card">
+      <div class="form-grid">
+        <div class="field third"><label>Search</label><input id="query" placeholder="Card code, staff, outlet, note"></div>
+        <div class="field third"><label>Transaction Type</label><select id="typeFilter"><option value="">All</option><option>sale</option><option>debit</option><option>refund</option><option>adjustment_plus</option><option>adjustment_minus</option><option>void_sale</option><option>void_debit</option></select></div>
+        <div class="field third"><label>Outlet</label><input id="outletFilter" placeholder="Optional outlet"></div>
+        <div class="field third"><label>Staff</label><input id="staffFilter" placeholder="Staff name"></div>
+        <div class="field third"><label>From Date</label><input id="fromDate" type="date" value="${today}"></div>
+        <div class="field third"><label>To Date</label><input id="toDate" type="date" value="${today}"></div>
+      </div>
+      <div class="btn-row" style="margin-top:12px">
+        <button id="applyBtn" class="btn primary" type="button">Apply Filter</button>
+        <button id="resetBtn" class="btn secondary" type="button">Today</button>
+        <button id="xlsxBtn" class="btn secondary" type="button">Export XLSX</button>
+        <button id="pdfBtn" class="btn secondary" type="button">Export PDF</button>
+      </div>
+      <div id="txBox" class="helper" style="margin-top:12px">Loading...</div>
+    </div>`;
   const queryEl = document.getElementById('query');
   const typeFilterEl = document.getElementById('typeFilter');
+  const outletFilterEl = document.getElementById('outletFilter');
+  const staffFilterEl = document.getElementById('staffFilter');
+  const fromDateEl = document.getElementById('fromDate');
+  const toDateEl = document.getElementById('toDate');
   const txBoxEl = document.getElementById('txBox');
-  async function render() {
-    const rows = await listTransactions({ query: queryEl.value.trim(), type: typeFilterEl.value });
-    txBoxEl.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Card</th><th>Amount</th><th>Before</th><th>After</th><th>Outlet</th><th>Staff</th><th>Note</th></tr></thead><tbody>${rows.length ? rows.map(t => `<tr><td>${toDateTimeText(t.created_at)}</td><td>${escapeHtml(t.txn_type)}</td><td>${escapeHtml(t.card_code)}</td><td>${formatMoney(t.amount)}</td><td>${formatMoney(t.balance_before)}</td><td>${formatMoney(t.balance_after)}</td><td>${escapeHtml(t.outlet || '-')}</td><td>${escapeHtml(t.staff_name || '-')}</td><td>${escapeHtml(t.note || '-')}</td></tr>`).join('') : '<tr><td colspan="9">No transactions found.</td></tr>'}</tbody></table></div>`;
+
+  function rangeText() {
+    return `${fromDateEl.value || today} to ${toDateEl.value || today}${outletFilterEl.value.trim() ? ` · Outlet: ${outletFilterEl.value.trim()}` : ''}${typeFilterEl.value ? ` · Type: ${typeFilterEl.value}` : ''}`;
   }
-  queryEl.oninput = render; typeFilterEl.onchange = render; await render();
+
+  async function render() {
+    txBoxEl.textContent = 'Loading...';
+    try {
+      const rows = await listTransactions({ query: queryEl.value.trim(), type: typeFilterEl.value, outlet: outletFilterEl.value.trim(), staff: staffFilterEl.value.trim(), fromDate: fromDateEl.value, toDate: toDateEl.value });
+      lastRows = rows;
+      txBoxEl.innerHTML = `<div class="helper" style="margin-bottom:8px">${rows.length} transaction(s)</div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Card</th><th>Amount</th><th>Before</th><th>After</th><th>Outlet</th><th>Staff</th><th>Note</th><th>Action</th></tr></thead><tbody>${rows.length ? rows.map(t => `<tr><td>${toDateTimeText(t.created_at)}</td><td>${escapeHtml(t.txn_type)}${t.voided ? ' <span class="helper">(voided)</span>' : ''}</td><td><a href="card-detail.html?id=${encodeURIComponent(t.card_id)}">${escapeHtml(t.card_code)}</a></td><td>${formatMoney(t.amount)}</td><td>${formatMoney(t.balance_before)}</td><td>${formatMoney(t.balance_after)}</td><td>${escapeHtml(t.outlet || '-')}</td><td>${escapeHtml(t.staff_name || '-')}</td><td>${escapeHtml(t.note || '-')}</td><td>${t.txn_type === 'debit' && !t.voided ? `<button class="btn secondary voidBtn" data-id="${t.id}">Void</button>` : '-'}</td></tr>`).join('') : '<tr><td colspan="10">No transactions found.</td></tr>'}</tbody></table></div>`;
+      document.querySelectorAll('.voidBtn').forEach(btn => btn.addEventListener('click', async () => {
+        const note = prompt('Reason for void debit', `Void debit ${btn.dataset.id}`) || `Void debit ${btn.dataset.id}`;
+        try { await voidDebitTransaction(btn.dataset.id, ctx, note); await render(); } catch (err) { alert(err.message || 'Void failed'); }
+      }));
+    } catch (err) {
+      lastRows = [];
+      txBoxEl.innerHTML = `<div class="helper">${escapeHtml(err.message || 'Load failed')}</div>`;
+    }
+  }
+
+  async function exportTransactionsXlsx() {
+    if (!lastRows.length) return alert('No transactions to export.');
+    await exportSheetsXlsx(`sales-voucher-transactions-${todayBusinessDate()}.xlsx`, [{
+      name: 'Transactions',
+      rows: lastRows.map(t => ({
+        Date: toDateTimeText(t.created_at),
+        BusinessDate: t.business_date || '',
+        Type: t.txn_type,
+        Card: t.card_code,
+        Amount: t.amount,
+        Before: t.balance_before,
+        After: t.balance_after,
+        Outlet: t.outlet || '',
+        Staff: t.staff_name || '',
+        Note: t.note || '',
+        Voided: t.voided ? 'Yes' : 'No'
+      }))
+    }]);
+  }
+
+  async function exportTransactionsPdf() {
+    if (!lastRows.length) return alert('No transactions to export.');
+    await exportPdfReport({
+      fileName: `sales-voucher-transactions-${todayBusinessDate()}.pdf`,
+      title: 'Laya Sales Voucher v6 Transactions',
+      subtitle: rangeText(),
+      summaryRows: [
+        ['Transactions', lastRows.length],
+        ['Total Sale Amount', formatMoney(lastRows.filter(r => r.txn_type === 'sale').reduce((s, r) => s + Number(r.amount || 0), 0))],
+        ['Total Debit Amount', formatMoney(lastRows.filter(r => r.txn_type === 'debit').reduce((s, r) => s + Number(r.amount || 0), 0))]
+      ],
+      tables: [{
+        title: 'Transactions',
+        head: ['Date', 'Type', 'Card', 'Amount', 'Before', 'After', 'Outlet', 'Staff'],
+        body: lastRows.map(t => [toDateTimeText(t.created_at), t.txn_type + (t.voided ? ' (voided)' : ''), t.card_code, formatMoney(t.amount), formatMoney(t.balance_before), formatMoney(t.balance_after), t.outlet || '-', t.staff_name || '-'])
+      }]
+    });
+  }
+
+  document.getElementById('applyBtn').addEventListener('click', render);
+  document.getElementById('resetBtn').addEventListener('click', () => { queryEl.value=''; typeFilterEl.value=''; outletFilterEl.value=''; staffFilterEl.value=''; fromDateEl.value=today; toDateEl.value=today; render(); });
+  document.getElementById('xlsxBtn').addEventListener('click', exportTransactionsXlsx);
+  document.getElementById('pdfBtn').addEventListener('click', exportTransactionsPdf);
+  await render();
 </script>
-</body></html>
+</body>
+</html>
