@@ -4,8 +4,8 @@
 <body><div id="app"></div>
 <script type="module">
   import { mountShell, roleCan } from './auth-guard.js';
-  import { getSettings, createCard, listCards, formatMoney, escapeHtml, parseCardCode } from './app.js';
-  const ctx = await mountShell('create-card.html','Create Card','สร้างบัตรใหม่ลง Firebase ในสถานะ draft พร้อมใช้งานต่อที่หน้า Sell Card');
+  import { getSettings, createCard, listCards, formatMoney, escapeHtml, parseCardCode, ensureQrCodeLib } from './app.js';
+  const ctx = await mountShell('create-card.html','Create Card','สร้างบัตรใหม่ลง Firebase ในสถานะ draft พร้อม QR preview ทันที และ Save แล้วเปิดหน้า Print ให้อัตโนมัติ');
   if (!ctx || !roleCan(ctx.profile.role, 'create')) location.href = 'index.html';
   const settings = await getSettings();
   const el = document.getElementById('pageContent');
@@ -22,8 +22,14 @@
     <div class="field"><div id="feedback" class="helper"></div></div>
   </form></div>
   <div class="card">
-    <h3>Card Preview</h3>
-    <div id="previewBox" class="list-item"></div>
+    <h3>QR Preview</h3>
+    <div class="qr-preview-layout">
+      <div class="qr-preview-visual">
+        <div id="qrPreview" class="qr-live-code"></div>
+        <div class="small-note">QR จะ encode เฉพาะ Card Code เพื่อให้ดึงข้อมูลจริงจาก Firebase</div>
+      </div>
+      <div id="previewBox" class="list-item"></div>
+    </div>
   </div></div>`;
 
   const form = document.getElementById('cardForm');
@@ -37,8 +43,12 @@
   const validUntil = document.getElementById('valid_until');
   const notesEl = document.getElementById('notes');
   const previewBox = document.getElementById('previewBox');
+  const qrPreview = document.getElementById('qrPreview');
+  let qrReady = false;
+  let previewRun = 0;
 
-  function renderPreview() {
+  async function renderPreview() {
+    const runId = ++previewRun;
     const code = parseCardCode(cardCode.value);
     previewBox.innerHTML = `<div class="stat-line"><span>Card Code</span><strong>${escapeHtml(code || '-')}</strong></div>
     <div class="stat-line"><span>Card Label</span><strong>${escapeHtml(cardLabel.value || '-')}</strong></div>
@@ -47,6 +57,27 @@
     <div class="stat-line"><span>Sold Price</span><strong>${formatMoney(soldPrice.value || 0)}</strong></div>
     <div class="stat-line"><span>Outlet</span><strong>${escapeHtml(outletScope.value || '-')}</strong></div>
     <div class="stat-line"><span>Valid Until</span><strong>${escapeHtml(validUntil.value || 'Until fully redeemed')}</strong></div>`;
+
+    qrPreview.innerHTML = '';
+    if (!code) {
+      qrPreview.innerHTML = `<div class="qr-empty">กรอก Card Code เพื่อสร้าง QR Preview</div>`;
+      return;
+    }
+    try {
+      if (!qrReady) {
+        await ensureQrCodeLib();
+        qrReady = true;
+      }
+      if (runId !== previewRun) return;
+      new window.QRCode(qrPreview, {
+        text: code,
+        width: 170,
+        height: 170,
+        correctLevel: window.QRCode.CorrectLevel.H
+      });
+    } catch (err) {
+      qrPreview.innerHTML = `<div class="qr-empty">โหลด QR preview ไม่สำเร็จ</div>`;
+    }
   }
 
   document.getElementById('fillBtn').onclick = async () => {
@@ -55,21 +86,33 @@
     cardCode.value = `SV600-${n}`;
     cardLabel.value = `Sales Voucher ${n}`;
     cardSerial.value = `AR-SV-2026-${n}`;
-    renderPreview();
+    await renderPreview();
   };
   document.getElementById('previewBtn').onclick = renderPreview;
   [cardCode, cardLabel, cardSerial, faceValue, soldPrice, outletScope, validUntil].forEach(elm => elm.addEventListener('input', renderPreview));
-  renderPreview();
+  await renderPreview();
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    let printTab = null;
+    try {
+      printTab = window.open('about:blank', '_blank', 'noopener,noreferrer');
+    } catch {}
     feedback.textContent = 'Saving draft to Firebase...';
     try {
       const card = await createCard({ card_code: cardCode.value, card_label: cardLabel.value, card_serial: cardSerial.value, face_value: faceValue.value, sold_price: soldPrice.value, outlet_scope: outletScope.value, valid_until: validUntil.value, notes: notesEl.value }, ctx);
-      feedback.innerHTML = `Saved draft <strong>${escapeHtml(card.card_code)}</strong> successfully. <a href="card-detail.html?id=${encodeURIComponent(card.id)}">Open detail</a> · <a href="print-card-template.html?id=${encodeURIComponent(card.id)}" target="_blank" rel="noopener noreferrer">Print template</a>`;
-      e.target.reset();
-      renderPreview();
+      const printUrl = `print-card-template.html?id=${encodeURIComponent(card.id)}`;
+      feedback.innerHTML = `Saved draft <strong>${escapeHtml(card.card_code)}</strong> successfully. กำลังเปิดหน้า Print... <a href="card-detail.html?id=${encodeURIComponent(card.id)}">Open detail</a> · <a href="${printUrl}" target="_blank" rel="noopener noreferrer">Open print manually</a>`;
+      if (printTab) {
+        printTab.location.href = printUrl;
+      } else {
+        window.open(printUrl, '_blank', 'noopener,noreferrer');
+      }
+      form.reset();
+      feedback.insertAdjacentHTML('beforeend', ` <span class="small-note">Preview ถูก reset แล้ว พร้อมสร้างใบถัดไป</span>`);
+      await renderPreview();
     } catch (err) {
+      if (printTab && !printTab.closed) printTab.close();
       feedback.textContent = err.message || 'Save failed';
     }
   });
