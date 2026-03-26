@@ -33,7 +33,7 @@
           </div>
         </div>
         <div id="scannerRegion" class="scanner-wrap scanner-region" style="margin-top:12px"></div>
-        <div class="helper" id="camMsg" style="margin-top:10px">Camera not started yet. รองรับ manual search ได้เสมอ</div>
+        <div class="helper" id="camMsg" style="margin-top:10px">Camera not started yet. ระบบจะลองใช้ built-in scanner ก่อน และยังรองรับ manual search เสมอ</div>
         <div class="small-note" style="margin-top:8px">บน iPhone / iPad ควรเปิดผ่าน HTTPS และกด Allow Camera เมื่อระบบถาม</div>
         <div class="form-grid" style="margin-top:12px">
           <div class="field">
@@ -87,6 +87,45 @@
   let scannerStarted = false;
   let lastDecoded = '';
   let lastDecodeAt = 0;
+  let nativeStream = null;
+  let nativeVideo = null;
+  let nativeDetector = null;
+  let nativeLoopTimer = null;
+
+  function supportsNativeDetector() {
+    return typeof window.BarcodeDetector !== 'undefined';
+  }
+
+  async function ensureDeviceLabels() {
+    try {
+      const temp = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      temp.getTracks().forEach(track => track.stop());
+    } catch {}
+  }
+
+  async function enumerateVideoInputs() {
+    if (!navigator.mediaDevices?.enumerateDevices) return [];
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter(d => d.kind === 'videoinput').map((d, idx) => ({ id: d.deviceId, label: d.label || `Camera ${idx + 1}` }));
+  }
+
+  async function loadHtml5QrcodeLibrary() {
+    if (window.Html5Qrcode) return;
+    const sources = [
+      'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/minified/html5-qrcode.min.js',
+      'https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js'
+    ];
+    let lastErr = null;
+    for (const src of sources) {
+      try {
+        await loadScriptOnce(src, () => !!window.Html5Qrcode);
+        if (window.Html5Qrcode) return;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error('Unable to load QR scanner library.');
+  }
 
   function updateDeductState(card) {
     deductSubmitEl.disabled = !(card && card.status === 'active' && !isExpiredCard(card));
@@ -101,9 +140,13 @@
 
   async function populateCameraOptions() {
     try {
-      await loadScriptOnce('https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js', () => !!window.Html5Qrcode);
-      const cameras = await window.Html5Qrcode.getCameras();
-      const sorted = [...cameras].sort((a, b) => cameraLabelPriority(b.label) - cameraLabelPriority(a.label));
+      await ensureDeviceLabels();
+      let cameras = await enumerateVideoInputs();
+      if ((!cameras || !cameras.length) && window.Html5Qrcode) {
+        const html5Cams = await window.Html5Qrcode.getCameras();
+        cameras = html5Cams.map(cam => ({ id: cam.id, label: cam.label || cam.id }));
+      }
+      const sorted = [...(cameras || [])].sort((a, b) => cameraLabelPriority(b.label) - cameraLabelPriority(a.label));
       cameraSelectEl.innerHTML = `<option value="">Auto select camera</option>${sorted.map(cam => `<option value="${escapeHtml(cam.id)}">${escapeHtml(cam.label || cam.id)}</option>`).join('')}`;
       return sorted;
     } catch (err) {
@@ -159,15 +202,90 @@
 
   async function stopCamera() {
     try {
+      if (nativeLoopTimer) {
+        clearTimeout(nativeLoopTimer);
+        nativeLoopTimer = null;
+      }
+      if (nativeStream) {
+        nativeStream.getTracks().forEach(track => track.stop());
+      }
       if (html5Qr && scannerStarted) {
         await html5Qr.stop();
         await html5Qr.clear();
       }
     } catch {}
     html5Qr = null;
+    nativeStream = null;
+    nativeVideo = null;
+    nativeDetector = null;
     scannerStarted = false;
     scannerRegionEl.innerHTML = '';
     camMsgEl.textContent = 'Camera stopped.';
+  }
+
+  async function startNativeCamera() {
+    const selected = cameraSelectEl.value;
+    const constraints = selected
+      ? { video: { deviceId: { exact: selected } }, audio: false }
+      : { video: { facingMode: { ideal: 'environment' } }, audio: false };
+    nativeStream = await navigator.mediaDevices.getUserMedia(constraints);
+    nativeVideo = document.createElement('video');
+    nativeVideo.setAttribute('playsinline', 'true');
+    nativeVideo.muted = true;
+    nativeVideo.autoplay = true;
+    nativeVideo.style.width = '100%';
+    nativeVideo.style.maxWidth = '420px';
+    nativeVideo.style.borderRadius = '16px';
+    nativeVideo.style.display = 'block';
+    nativeVideo.srcObject = nativeStream;
+    scannerRegionEl.innerHTML = '';
+    scannerRegionEl.appendChild(nativeVideo);
+    await nativeVideo.play();
+    nativeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
+    scannerStarted = true;
+    camMsgEl.textContent = 'Camera started. ใช้ built-in scanner ของเครื่อง';
+
+    const tick = async () => {
+      if (!scannerStarted || !nativeVideo || nativeVideo.readyState < 2) {
+        nativeLoopTimer = setTimeout(tick, 250);
+        return;
+      }
+      try {
+        const codes = await nativeDetector.detect(nativeVideo);
+        if (codes && codes.length) {
+          const raw = codes[0].rawValue || codes[0].rawData || '';
+          if (raw) {
+            await handleDecoded(raw);
+            return;
+          }
+        }
+      } catch {}
+      nativeLoopTimer = setTimeout(tick, 180);
+    };
+    tick();
+  }
+
+  async function startFallbackCamera() {
+    await loadHtml5QrcodeLibrary();
+    const cameras = await populateCameraOptions();
+    const selected = cameraSelectEl.value;
+    const preferred = selected || cameras[0]?.id;
+    if (!preferred) throw new Error('No camera found on this device.');
+    html5Qr = new window.Html5Qrcode('scannerRegion');
+    await html5Qr.start(
+      preferred,
+      {
+        fps: 10,
+        qrbox: { width: 220, height: 220 },
+        aspectRatio: 1.333334,
+        rememberLastUsedCamera: true,
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+      },
+      async (decodedText) => { await handleDecoded(decodedText); },
+      () => {}
+    );
+    scannerStarted = true;
+    camMsgEl.textContent = 'Camera started. พร้อมสแกน QR';
   }
 
   async function startCamera() {
@@ -177,26 +295,13 @@
       return;
     }
     try {
-      await loadScriptOnce('https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js', () => !!window.Html5Qrcode);
       const cameras = await populateCameraOptions();
-      const selected = cameraSelectEl.value;
-      const preferred = selected || cameras[0]?.id;
-      if (!preferred) throw new Error('No camera found on this device.');
-      html5Qr = new window.Html5Qrcode('scannerRegion');
-      await html5Qr.start(
-        preferred,
-        {
-          fps: 10,
-          qrbox: { width: 220, height: 220 },
-          aspectRatio: 1.333334,
-          rememberLastUsedCamera: true,
-          experimentalFeatures: { useBarCodeDetectorIfSupported: true }
-        },
-        async (decodedText) => { await handleDecoded(decodedText); },
-        () => {}
-      );
-      scannerStarted = true;
-      camMsgEl.textContent = 'Camera started. พร้อมสแกน QR';
+      if (!cameraSelectEl.value && cameras[0]?.id) cameraSelectEl.value = cameras[0].id;
+      if (supportsNativeDetector()) {
+        await startNativeCamera();
+        return;
+      }
+      await startFallbackCamera();
     } catch (err) {
       camMsgEl.textContent = 'เปิดกล้องไม่สำเร็จ: ' + (err.message || 'Unknown error');
     }
