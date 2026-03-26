@@ -10,10 +10,26 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 
 const PERMISSIONS = {
-  staff: ["home", "dashboard", "scan", "balance", "search", "detail"],
+  staff: ["scan", "balance", "search", "detail"],
+  fb_staff: ["scan", "balance", "search", "detail"],
   supervisor: ["home", "dashboard", "scan", "balance", "search", "detail", "transactions"],
-  manager: ["home", "dashboard", "scan", "balance", "search", "detail", "transactions", "create", "sell", "settings"],
-  admin: ["home", "dashboard", "scan", "balance", "search", "detail", "transactions", "create", "sell", "settings", "users"]
+  manager: ["home", "dashboard", "scan", "balance", "search", "detail", "transactions", "create", "sell", "settings", "print"],
+  admin: ["home", "dashboard", "scan", "balance", "search", "detail", "transactions", "create", "sell", "settings", "users", "print"]
+};
+
+const PAGE_FEATURES = {
+  'index.html': 'home',
+  'dashboard.html': 'dashboard',
+  'create-card.html': 'create',
+  'sell-card.html': 'sell',
+  'scan-deduct.html': 'scan',
+  'check-balance.html': 'balance',
+  'search-card.html': 'search',
+  'card-detail.html': 'detail',
+  'transactions.html': 'transactions',
+  'settings.html': 'settings',
+  'admin-users.html': 'users',
+  'print-card-template.html': 'print'
 };
 
 export function roleCan(role, feature) {
@@ -21,8 +37,12 @@ export function roleCan(role, feature) {
 }
 
 export function getHomeByRole(profile) {
-  if (!profile?.role) return "login.html";
-  return roleCan(profile.role, "dashboard") ? "dashboard.html" : "scan-deduct.html";
+  const role = profile?.role;
+  if (!role) return "login.html";
+  if (roleCan(role, 'home')) return 'index.html';
+  if (roleCan(role, 'scan')) return 'scan-deduct.html';
+  if (roleCan(role, 'balance')) return 'check-balance.html';
+  return 'login.html';
 }
 
 async function fetchProfile(user) {
@@ -76,6 +96,12 @@ export async function mountShell(activePage, pageTitle, pageDesc) {
   const ctx = await requireRole([]);
   if (!ctx) return null;
   const { profile } = ctx;
+  const requiredFeature = PAGE_FEATURES[activePage];
+  if (requiredFeature && !roleCan(profile.role, requiredFeature)) {
+    alert('คุณไม่มีสิทธิ์เข้าหน้านี้');
+    location.href = getHomeByRole(profile);
+    return null;
+  }
   const app = document.getElementById("app");
   if (!app) return ctx;
 

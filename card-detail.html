@@ -5,7 +5,7 @@
 <script type="module">
   import { mountShell, roleCan } from './auth-guard.js';
   import { getCardById, getCardTransactions, updateCardStatus, adjustBalance, voidDebitTransaction, escapeHtml, formatMoney, getStatusClass, toDateTimeText, toDateValue } from './app.js';
-  const ctx = await mountShell('card-detail.html','Card Detail','สรุปข้อมูลบัตร 1 ใบ พร้อมดู ledger ย้อนหลัง');
+  const ctx = await mountShell('card-detail.html','Card Detail','สรุปข้อมูลบัตร 1 ใบ โดย FB Staff ดูได้แบบอ่านอย่างเดียว');
   const id = new URLSearchParams(location.search).get('id');
   const el = document.getElementById('pageContent');
 
@@ -38,7 +38,7 @@
             ${roleCan(ctx.profile.role, 'sell') && card.status !== 'disabled' ? `<button class="btn danger" id="disableBtn" type="button">Disable</button>` : ''}
             ${roleCan(ctx.profile.role, 'sell') && card.status === 'disabled' ? `<button class="btn primary" id="enableBtn" type="button">Enable</button>` : ''}
             ${roleCan(ctx.profile.role, 'sell') ? `<button class="btn secondary" id="adjustPlusBtn" type="button">Adjustment +</button><button class="btn secondary" id="adjustMinusBtn" type="button">Adjustment -</button>` : ''}
-            <a class="btn secondary" href="print-card-template.html?id=${encodeURIComponent(card.id)}" target="_blank" rel="noopener noreferrer">Print Card</a>${roleCan(ctx.profile.role, 'transactions') && lastVoidable ? `<button class="btn secondary" id="voidLastDebitBtn" type="button">Void Last Debit</button>` : ''}
+            ${roleCan(ctx.profile.role, 'print') ? `<a class=\"btn secondary\" href=\"print-card-template.html?id=${encodeURIComponent(card.id)}\" target=\"_blank\" rel=\"noopener noreferrer\">Print Card</a>` : ''}${roleCan(ctx.profile.role, 'transactions') && lastVoidable ? `<button class="btn secondary" id="voidLastDebitBtn" type="button">Void Last Debit</button>` : ''}
           </div>
           <div id="actionFeedback" class="helper" style="margin-top:10px"></div>
         </div>
