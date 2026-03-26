@@ -201,7 +201,26 @@ service cloud.firestore {
         && request.resource.data.card_code is string
         && request.resource.data.txn_type is string
         && request.resource.data.amount is number;
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (
+          isSupervisorOrAbove()
+          && request.resource.data.card_id == resource.data.card_id
+          && request.resource.data.card_code == resource.data.card_code
+          && request.resource.data.txn_type == resource.data.txn_type
+          && request.resource.data.amount == resource.data.amount
+          && request.resource.data.balance_before == resource.data.balance_before
+          && request.resource.data.balance_after == resource.data.balance_after
+          && request.resource.data.outlet == resource.data.outlet
+          && request.resource.data.staff_uid == resource.data.staff_uid
+          && request.resource.data.staff_name == resource.data.staff_name
+          && request.resource.data.note == resource.data.note
+          && request.resource.data.created_at == resource.data.created_at
+          && request.resource.data.business_date == resource.data.business_date
+          && request.resource.data.voided == true
+          && request.resource.data.voided_at != null
+          && request.resource.data.voided_by_uid == request.auth.uid
+        );
+      allow delete: if isAdmin();
     }
   }
 }
