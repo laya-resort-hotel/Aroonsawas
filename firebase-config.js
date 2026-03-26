@@ -28,7 +28,7 @@ try {
 }
 
 export const appConfig = {
-  backToFreeVoucherUrl: "https://wuttichaikoji-oss.github.io/Laya-Voucher/",
+  backToFreeVoucherUrl: "https://laya-resort-hotel.github.io/aroonsawat/dashboard.html",
   saleCardRepoUrl: "https://wuttichaikoji-oss.github.io/Laya-Sales-Voucher/",
   appName: "Laya Sales Voucher v6",
   companyName: "LAYA RESORT HOTEL"
