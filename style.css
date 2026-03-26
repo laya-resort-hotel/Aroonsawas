@@ -122,39 +122,52 @@ tr:hover td { background: rgba(255,255,255,.02); }
 .scanner-region #reader, .scanner-region > div { width: 100% !important; }
 .scanner-region video { border-radius: 14px; }
 .scanner-region img { max-width: 100%; }
-.print-card-stage { display:flex; justify-content:center; padding: 4px 0 24px; }
+.print-card-stage { display:flex; justify-content:center; padding: 6px 0 24px; }
 .sale-card-mockup { display:grid; grid-template-columns: repeat(2, 1fr); gap: 24px; align-items:start; }
 .sale-card-front, .sale-card-back {
   position: relative;
   width: 85.6mm;
   height: 54mm;
   color: #f6e9c7;
-  border-radius: 14px;
+  border-radius: 15px;
   overflow: hidden;
-  padding: 12px;
-  background: radial-gradient(circle at top right, rgba(212,181,106,.22), rgba(212,181,106,0) 35%), linear-gradient(135deg,#08281f,#183e33 55%,#244d40);
-  box-shadow: 0 18px 36px rgba(0,0,0,.32);
+  padding: 11px;
+  background: radial-gradient(circle at top right, rgba(212,181,106,.18), rgba(212,181,106,0) 34%), linear-gradient(135deg,#0a241d,#16382f 56%,#214b3e);
+  box-shadow: 0 18px 36px rgba(0,0,0,.28);
 }
 .sale-card-border {
-  position:absolute; inset:8px; border:1.2px solid rgba(212,181,106,.85); border-radius:10px; pointer-events:none;
+  position:absolute; inset:8px; border:1.15px solid rgba(212,181,106,.82); border-radius:11px; pointer-events:none;
 }
-.sale-card-header { position:relative; z-index:1; display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
-.sale-card-brand { font-size: 10pt; font-weight: 800; letter-spacing: .04em; }
-.sale-card-subtitle { font-size: 8pt; opacity: .92; margin-top: 2px; }
-.sale-card-value { font-size: 17pt; font-weight: 800; white-space: nowrap; }
-.sale-card-body { position:relative; z-index:1; display:grid; grid-template-columns: 154px 1fr; gap: 12px; align-items:center; margin-top: 10px; }
-.sale-card-qr-wrap { background: #fff; padding: 8px; border-radius: 10px; width: 148px; height: 148px; display:grid; place-items:center; }
-.sale-card-qr > img, .sale-card-qr > canvas { width: 132px !important; height: 132px !important; }
-.sale-card-front-meta { display:grid; gap:8px; }
-.sale-card-line { display:grid; gap:3px; }
-.sale-card-line span { font-size: 7.6pt; opacity:.8; }
-.sale-card-line strong { font-size: 9.2pt; color:#fff7df; }
-.sale-card-footer { position:absolute; left:12px; right:12px; bottom:12px; z-index:1; font-size: 8pt; font-weight:700; }
-.sale-card-back-title { position:relative; z-index:1; font-size: 14pt; font-weight: 800; margin-bottom: 10px; }
-.sale-card-policy { position:relative; z-index:1; font-size: 9pt; margin-bottom: 6px; }
-.sale-card-terms-title { position:relative; z-index:1; font-size: 10pt; font-weight: 700; margin: 10px 0 4px; }
-.sale-card-terms { position:relative; z-index:1; margin: 0; padding-left: 18px; font-size: 7.8pt; line-height: 1.35; display:grid; gap:4px; }
-.sale-card-serial { position:absolute; left:12px; right:12px; bottom:12px; z-index:1; font-size: 9pt; font-weight:700; }
+.sale-card-brand { font-size: 9.8pt; font-weight: 800; letter-spacing: .04em; line-height: 1.05; }
+.sale-card-subtitle { font-size: 7.8pt; opacity: .9; margin-top: 1px; }
+.sale-card-qr-wrap { background: #fff; padding: 7px; border-radius: 10px; width: 124px; height: 124px; display:grid; place-items:center; box-shadow: 0 6px 18px rgba(0,0,0,.16); }
+.sale-card-qr > img, .sale-card-qr > canvas { width: 108px !important; height: 108px !important; }
+.sale-card-front-top { position:relative; z-index:1; display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+.sale-card-value-block { text-align:right; }
+.sale-card-currency { font-size: 7.5pt; font-weight:700; letter-spacing:.08em; opacity:.88; }
+.sale-card-value { font-size: 25pt; line-height: .95; font-weight: 800; white-space: nowrap; }
+.sale-card-front-main { position:relative; z-index:1; display:grid; grid-template-columns: 124px 1fr; gap: 16px; align-items:center; margin-top: 8px; }
+.sale-card-front-meta { display:grid; }
+.sale-card-code-label { font-size: 7pt; text-transform: uppercase; letter-spacing: .12em; opacity:.75; }
+.sale-card-code-big { font-size: 14pt; line-height: 1.05; font-weight:800; color:#fff7df; margin-top: 3px; }
+.sale-card-chip-grid { display:grid; gap:8px; margin-top: 12px; }
+.sale-card-chip { display:grid; gap:2px; padding:7px 8px; border-radius:10px; background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); }
+.sale-card-chip span { font-size: 6.8pt; text-transform: uppercase; letter-spacing:.08em; opacity:.74; }
+.sale-card-chip strong { font-size: 8.5pt; color:#fff6da; }
+.sale-card-footer { position:absolute; left:16px; right:16px; bottom:13px; z-index:1; font-size: 8.1pt; font-weight:700; color:#f3e7c4; }
+.sale-card-back-header { position:relative; z-index:1; margin-bottom: 9px; }
+.sale-card-back-title { font-size: 12.8pt; font-weight: 800; line-height: 1.05; }
+.sale-card-back-sub { font-size: 7.5pt; opacity:.83; margin-top: 3px; }
+.sale-card-policy-grid { position:relative; z-index:1; display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin-bottom: 10px; }
+.sale-card-policy-box { padding: 8px 9px; border-radius: 10px; background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); display:grid; gap:3px; }
+.sale-card-policy-box span { font-size: 6.8pt; text-transform: uppercase; letter-spacing:.08em; opacity:.74; }
+.sale-card-policy-box strong { font-size: 8.2pt; color:#fff6da; }
+.sale-card-terms-title { position:relative; z-index:1; font-size: 8.9pt; font-weight: 700; margin: 0 0 5px; }
+.sale-card-terms { position:relative; z-index:1; margin: 0; padding-left: 16px; }
+.sale-card-terms-clean { font-size: 7.1pt; line-height: 1.3; display:grid; gap:3px; }
+.sale-card-back-footer { position:absolute; left:16px; right:16px; bottom:13px; z-index:1; display:grid; gap:6px; }
+.sale-card-note-small { font-size: 6.4pt; line-height: 1.25; opacity:.82; }
+.sale-card-serial { font-size: 8pt; font-weight:700; color:#fff3cc; }
 .print-only { display:none; }
 
 @media (max-width: 980px) {

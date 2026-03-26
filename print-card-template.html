@@ -30,42 +30,59 @@
       await ensureQrCodeLib();
       printStageEl.innerHTML = `
         <div class="print-card-stage">
-          <div class="sale-card-mockup">
-            <div class="sale-card-front">
+          <div class="sale-card-mockup sale-card-mockup-clean">
+            <div class="sale-card-front sale-card-front-clean">
               <div class="sale-card-border"></div>
-              <div class="sale-card-header">
+              <div class="sale-card-front-top">
                 <div>
                   <div class="sale-card-brand">LAYA RESORT HOTEL</div>
                   <div class="sale-card-subtitle">Sales Voucher</div>
                 </div>
-                <div class="sale-card-value">${escapeHtml((card.currency || 'THB'))} ${escapeHtml(String(card.face_value || 0))}</div>
-              </div>
-              <div class="sale-card-body">
-                <div class="sale-card-qr-wrap"><div id="qrFront" class="sale-card-qr"></div></div>
-                <div class="sale-card-front-meta">
-                  <div class="sale-card-line"><span>Card Code</span><strong>${escapeHtml(card.card_code || '-')}</strong></div>
-                  <div class="sale-card-line"><span>Card Label</span><strong>${escapeHtml(card.card_label || '-')}</strong></div>
-                  <div class="sale-card-line"><span>Outlet</span><strong>${escapeHtml(card.outlet_scope || 'Aroonsawat')}</strong></div>
-                  <div class="sale-card-line"><span>Valid Until</span><strong>${escapeHtml(toDateValue(card.valid_until) || 'Until fully redeemed')}</strong></div>
+                <div class="sale-card-value-block">
+                  <div class="sale-card-currency">${escapeHtml((card.currency || 'THB'))}</div>
+                  <div class="sale-card-value">${escapeHtml(String(card.face_value || 0))}</div>
                 </div>
               </div>
-              <div class="sale-card-footer">Redeemable only at ${escapeHtml(card.outlet_scope || 'Aroonsawat')}</div>
+              <div class="sale-card-front-main">
+                <div class="sale-card-qr-wrap sale-card-qr-wrap-clean"><div id="qrFront" class="sale-card-qr"></div></div>
+                <div class="sale-card-front-meta sale-card-front-meta-clean">
+                  <div class="sale-card-code-label">Card Code</div>
+                  <div class="sale-card-code-big">${escapeHtml(card.card_code || '-')}</div>
+                  <div class="sale-card-chip-grid">
+                    <div class="sale-card-chip"><span>Outlet</span><strong>${escapeHtml(card.outlet_scope || 'Aroonsawat')}</strong></div>
+                    <div class="sale-card-chip"><span>Valid Until</span><strong>${escapeHtml(toDateValue(card.valid_until) || 'Until fully redeemed')}</strong></div>
+                  </div>
+                </div>
+              </div>
+              <div class="sale-card-footer sale-card-footer-clean">Redeemable only at ${escapeHtml(card.outlet_scope || 'Aroonsawat')}</div>
             </div>
-            <div class="sale-card-back">
+            <div class="sale-card-back sale-card-back-clean">
               <div class="sale-card-border"></div>
-              <div class="sale-card-back-title">Voucher Policy</div>
-              <div class="sale-card-policy"><strong>Valid Until:</strong> ${escapeHtml(toDateValue(card.valid_until) || 'Until fully redeemed')}</div>
-              <div class="sale-card-policy"><strong>Issued By:</strong> LAYA RESORT HOTEL</div>
+              <div class="sale-card-back-header">
+                <div class="sale-card-back-title">Voucher Policy</div>
+                <div class="sale-card-back-sub">Issued by LAYA RESORT HOTEL</div>
+              </div>
+              <div class="sale-card-policy-grid">
+                <div class="sale-card-policy-box">
+                  <span>Valid Until</span>
+                  <strong>${escapeHtml(toDateValue(card.valid_until) || 'Until fully redeemed')}</strong>
+                </div>
+                <div class="sale-card-policy-box">
+                  <span>Outlet</span>
+                  <strong>${escapeHtml(card.outlet_scope || 'Aroonsawat')}</strong>
+                </div>
+              </div>
               <div class="sale-card-terms-title">Terms &amp; Conditions</div>
-              <ul class="sale-card-terms">
-                <li>Redeemable only at ${escapeHtml(card.outlet_scope || 'Aroonsawat')}.</li>
-                <li>Please present the QR code and card code to staff before ordering.</li>
-                <li>This card is valid only for eligible menu purchases under hotel policy.</li>
-                <li>It cannot be combined with promotions, discounts, or other special offers.</li>
-                <li>This card is non-refundable, non-transferable, and has no cash value.</li>
-                <li>Management reserves the right to amend these terms without prior notice.</li>
+              <ul class="sale-card-terms sale-card-terms-clean">
+                <li>Present the QR code or card code before ordering.</li>
+                <li>Valid only for eligible menu purchases under hotel policy.</li>
+                <li>Cannot be combined with other promotions or discounts.</li>
+                <li>Non-refundable, non-transferable, and has no cash value.</li>
               </ul>
-              <div class="sale-card-serial">Serial: ${escapeHtml(card.card_serial || card.card_code || '-')}</div>
+              <div class="sale-card-back-footer">
+                <div class="sale-card-note-small">Management reserves the right to amend these terms without prior notice.</div>
+                <div class="sale-card-serial">Serial: ${escapeHtml(card.card_serial || card.card_code || '-')}</div>
+              </div>
             </div>
           </div>
         </div>`;
