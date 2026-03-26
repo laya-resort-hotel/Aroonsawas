@@ -1,39 +1,103 @@
 <!DOCTYPE html>
 <html lang="th">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Create Card</title><link rel="stylesheet" href="style.css" /></head>
-<body><div id="app"></div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create Card</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app"></div>
 <script type="module">
   import { mountShell, roleCan } from './auth-guard.js';
   import { getSettings, createCard, listCards, formatMoney, escapeHtml, parseCardCode, ensureQrCodeLib } from './app.js';
-  const ctx = await mountShell('create-card.html','Create Card','สร้างบัตรใหม่ลง Firebase ในสถานะ draft พร้อม QR preview ทันที และ Save แล้วเปิดหน้า Print ให้อัตโนมัติ');
+
+  const ctx = await mountShell('create-card.html','Create Card','สร้างบัตรมูลค่าเงินแบบ draft พร้อม Save Draft, Save & Print และสร้าง QR Code อัตโนมัติจาก face value + batch + running number');
   if (!ctx || !roleCan(ctx.profile.role, 'create')) location.href = 'index.html';
+
   const settings = await getSettings();
-  const el = document.getElementById('pageContent');
-  el.innerHTML = `<div class="split"><div class="card"><form id="cardForm" class="form-grid">
-    <div class="field half"><label>Card Code</label><input id="card_code" required placeholder="เช่น SV600-004"></div>
-    <div class="field half"><label>Card Label</label><input id="card_label" required placeholder="เช่น Sales Voucher 004"></div>
-    <div class="field half"><label>Card Serial</label><input id="card_serial" placeholder="เช่น AR-SV-2026-0004"></div>
-    <div class="field quarter"><label>Face Value</label><input id="face_value" type="number" min="1" value="600" required></div>
-    <div class="field quarter"><label>Sold Price</label><input id="sold_price" type="number" min="1" value="490" required></div>
-    <div class="field half"><label>Outlet Scope</label><select id="outlet_scope">${(settings.outlets||[]).map(o=>`<option>${escapeHtml(o)}</option>`).join('')}</select></div>
-    <div class="field half"><label>Valid Until</label><input id="valid_until" type="date"></div>
-    <div class="field"><label>Notes</label><textarea id="notes" placeholder="Internal note"></textarea></div>
-    <div class="field"><div class="btn-row"><button class="btn primary" type="submit">Save Draft</button><button class="btn secondary" type="button" id="fillBtn">Generate Sample Code</button><button class="btn secondary" type="button" id="previewBtn">Refresh Preview</button></div></div>
-    <div class="field"><div id="feedback" class="helper"></div></div>
-  </form></div>
-  <div class="card">
-    <h3>QR Preview</h3>
-    <div class="qr-preview-layout">
-      <div class="qr-preview-visual">
-        <div id="qrPreview" class="qr-live-code"></div>
-        <div class="small-note">QR จะ encode เฉพาะ Card Code เพื่อให้ดึงข้อมูลจริงจาก Firebase</div>
+  const page = document.getElementById('pageContent');
+  page.innerHTML = `
+    <div class="split">
+      <div class="card">
+        <form id="cardForm" class="form-grid">
+          <div class="field half">
+            <label>Auto Generate Card Code</label>
+            <label class="badge info" style="width:max-content; cursor:pointer;">
+              <input id="auto_code" type="checkbox" checked style="width:auto; margin-right:8px;"> ใช้ face value + batch + running number
+            </label>
+          </div>
+          <div class="field quarter">
+            <label>Batch Number</label>
+            <input id="batch_no" value="01" maxlength="4" placeholder="เช่น 01">
+          </div>
+          <div class="field quarter">
+            <label>Running No.</label>
+            <input id="running_no" readonly>
+          </div>
+
+          <div class="field half">
+            <label>Card Code</label>
+            <input id="card_code" required placeholder="เช่น SV600-B01-0001">
+          </div>
+          <div class="field half">
+            <label>Card Label</label>
+            <input id="card_label" required placeholder="เช่น Sales Voucher THB 600 #0001">
+          </div>
+          <div class="field half">
+            <label>Card Serial</label>
+            <input id="card_serial" placeholder="เช่น AR-SV-2026-600-B01-0001">
+          </div>
+          <div class="field quarter">
+            <label>Face Value</label>
+            <input id="face_value" type="number" min="1" value="600" required>
+          </div>
+          <div class="field quarter">
+            <label>Sold Price</label>
+            <input id="sold_price" type="number" min="1" value="490" required>
+          </div>
+          <div class="field half">
+            <label>Outlet Scope</label>
+            <select id="outlet_scope">${(settings.outlets||[]).map(o=>`<option>${escapeHtml(o)}</option>`).join('')}</select>
+          </div>
+          <div class="field half">
+            <label>Valid Until</label>
+            <input id="valid_until" type="date">
+          </div>
+          <div class="field">
+            <label>Notes</label>
+            <textarea id="notes" placeholder="Internal note / batch note"></textarea>
+          </div>
+
+          <div class="field">
+            <div class="btn-row">
+              <button class="btn primary" type="button" id="saveBtn">Save Draft</button>
+              <button class="btn linkout" type="button" id="savePrintBtn">Save &amp; Print</button>
+              <button class="btn secondary" type="button" id="nextCodeBtn">Refresh Auto Code</button>
+              <button class="btn secondary" type="button" id="clearBtn">Clear</button>
+            </div>
+          </div>
+          <div class="field"><div id="feedback" class="helper"></div></div>
+        </form>
       </div>
-      <div id="previewBox" class="list-item"></div>
-    </div>
-  </div></div>`;
+
+      <div class="card">
+        <h3>QR Preview</h3>
+        <div class="qr-preview-layout">
+          <div class="qr-preview-visual">
+            <div id="qrPreview" class="qr-live-code"></div>
+            <div class="small-note">QR จะ encode เฉพาะ Card Code เพื่อดึงยอดและมูลค่าจริงจาก Firebase</div>
+          </div>
+          <div id="previewBox" class="list-item"></div>
+        </div>
+      </div>
+    </div>`;
 
   const form = document.getElementById('cardForm');
   const feedback = document.getElementById('feedback');
+  const autoCode = document.getElementById('auto_code');
+  const batchNo = document.getElementById('batch_no');
+  const runningNo = document.getElementById('running_no');
   const cardCode = document.getElementById('card_code');
   const cardLabel = document.getElementById('card_label');
   const cardSerial = document.getElementById('card_serial');
@@ -44,23 +108,81 @@
   const notesEl = document.getElementById('notes');
   const previewBox = document.getElementById('previewBox');
   const qrPreview = document.getElementById('qrPreview');
+  const saveBtn = document.getElementById('saveBtn');
+  const savePrintBtn = document.getElementById('savePrintBtn');
+  const nextCodeBtn = document.getElementById('nextCodeBtn');
+  const clearBtn = document.getElementById('clearBtn');
+
   let qrReady = false;
   let previewRun = 0;
+  let cardsCache = [];
+
+  function sanitizeBatch(v = '') {
+    const cleaned = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+    return cleaned || '01';
+  }
+
+  function padRun(n) {
+    return String(Math.max(1, Number(n || 1))).padStart(4, '0');
+  }
+
+  function currentYear() {
+    return new Date().getFullYear();
+  }
+
+  async function refreshCardsCache() {
+    cardsCache = await listCards({});
+  }
+
+  function nextRunning(face, batch) {
+    const re = new RegExp(`^SV${Number(face)}-B${batch}-(\\d{4,})$`, 'i');
+    let max = 0;
+    for (const card of cardsCache) {
+      const code = parseCardCode(card.card_code || '');
+      const m = code.match(re);
+      if (m) max = Math.max(max, Number(m[1] || 0));
+    }
+    return max + 1;
+  }
+
+  function applyAutoCode() {
+    if (!autoCode.checked) return;
+    const face = Math.max(1, Number(faceValue.value || 0) || 600);
+    const batch = sanitizeBatch(batchNo.value);
+    batchNo.value = batch;
+    const run = padRun(nextRunning(face, batch));
+    runningNo.value = run;
+    cardCode.value = `SV${face}-B${batch}-${run}`;
+    cardLabel.value = `Sales Voucher THB ${face} #${run}`;
+    cardSerial.value = `AR-SV-${currentYear()}-${face}-B${batch}-${run}`;
+  }
+
+  function syncReadOnlyState() {
+    const locked = autoCode.checked;
+    cardCode.readOnly = locked;
+    cardLabel.readOnly = locked;
+    cardSerial.readOnly = locked;
+    runningNo.readOnly = true;
+    if (locked) applyAutoCode();
+  }
 
   async function renderPreview() {
     const runId = ++previewRun;
     const code = parseCardCode(cardCode.value);
-    previewBox.innerHTML = `<div class="stat-line"><span>Card Code</span><strong>${escapeHtml(code || '-')}</strong></div>
-    <div class="stat-line"><span>Card Label</span><strong>${escapeHtml(cardLabel.value || '-')}</strong></div>
-    <div class="stat-line"><span>Card Serial</span><strong>${escapeHtml(cardSerial.value || '-')}</strong></div>
-    <div class="stat-line"><span>Face Value</span><strong>${formatMoney(faceValue.value || 0)}</strong></div>
-    <div class="stat-line"><span>Sold Price</span><strong>${formatMoney(soldPrice.value || 0)}</strong></div>
-    <div class="stat-line"><span>Outlet</span><strong>${escapeHtml(outletScope.value || '-')}</strong></div>
-    <div class="stat-line"><span>Valid Until</span><strong>${escapeHtml(validUntil.value || 'Until fully redeemed')}</strong></div>`;
+    previewBox.innerHTML = `
+      <div class="stat-line"><span>Card Code</span><strong>${escapeHtml(code || '-')}</strong></div>
+      <div class="stat-line"><span>Card Label</span><strong>${escapeHtml(cardLabel.value || '-')}</strong></div>
+      <div class="stat-line"><span>Card Serial</span><strong>${escapeHtml(cardSerial.value || '-')}</strong></div>
+      <div class="stat-line"><span>Face Value</span><strong>${formatMoney(faceValue.value || 0)}</strong></div>
+      <div class="stat-line"><span>Sold Price</span><strong>${formatMoney(soldPrice.value || 0)}</strong></div>
+      <div class="stat-line"><span>Batch</span><strong>${escapeHtml(sanitizeBatch(batchNo.value))}</strong></div>
+      <div class="stat-line"><span>Running No.</span><strong>${escapeHtml(runningNo.value || '-')}</strong></div>
+      <div class="stat-line"><span>Outlet</span><strong>${escapeHtml(outletScope.value || '-')}</strong></div>
+      <div class="stat-line"><span>Valid Until</span><strong>${escapeHtml(validUntil.value || 'Until fully redeemed')}</strong></div>`;
 
     qrPreview.innerHTML = '';
     if (!code) {
-      qrPreview.innerHTML = `<div class="qr-empty">กรอก Card Code เพื่อสร้าง QR Preview</div>`;
+      qrPreview.innerHTML = `<div class="qr-empty">กรอกข้อมูลหรือเปิด Auto Generate เพื่อสร้าง QR Preview</div>`;
       return;
     }
     try {
@@ -75,46 +197,92 @@
         height: 170,
         correctLevel: window.QRCode.CorrectLevel.H
       });
-    } catch (err) {
+    } catch {
       qrPreview.innerHTML = `<div class="qr-empty">โหลด QR preview ไม่สำเร็จ</div>`;
     }
   }
 
-  document.getElementById('fillBtn').onclick = async () => {
-    const cards = await listCards({});
-    const n = String(cards.length + 1).padStart(3, '0');
-    cardCode.value = `SV600-${n}`;
-    cardLabel.value = `Sales Voucher ${n}`;
-    cardSerial.value = `AR-SV-2026-${n}`;
-    await renderPreview();
-  };
-  document.getElementById('previewBtn').onclick = renderPreview;
-  [cardCode, cardLabel, cardSerial, faceValue, soldPrice, outletScope, validUntil].forEach(elm => elm.addEventListener('input', renderPreview));
-  await renderPreview();
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  async function saveCard({ openPrint = false } = {}) {
+    if (!form.reportValidity()) return;
     let printTab = null;
+    if (openPrint) {
+      try { printTab = window.open('about:blank', '_blank', 'noopener,noreferrer'); } catch {}
+    }
+    feedback.textContent = openPrint ? 'Saving draft to Firebase and opening print...' : 'Saving draft to Firebase...';
+    saveBtn.disabled = true;
+    savePrintBtn.disabled = true;
     try {
-      printTab = window.open('about:blank', '_blank', 'noopener,noreferrer');
-    } catch {}
-    feedback.textContent = 'Saving draft to Firebase...';
-    try {
-      const card = await createCard({ card_code: cardCode.value, card_label: cardLabel.value, card_serial: cardSerial.value, face_value: faceValue.value, sold_price: soldPrice.value, outlet_scope: outletScope.value, valid_until: validUntil.value, notes: notesEl.value }, ctx);
+      const card = await createCard({
+        card_code: cardCode.value,
+        card_label: cardLabel.value,
+        card_serial: cardSerial.value,
+        face_value: faceValue.value,
+        sold_price: soldPrice.value,
+        outlet_scope: outletScope.value,
+        valid_until: validUntil.value,
+        notes: notesEl.value
+      }, ctx);
+
       const printUrl = `print-card-template.html?id=${encodeURIComponent(card.id)}`;
-      feedback.innerHTML = `Saved draft <strong>${escapeHtml(card.card_code)}</strong> successfully. กำลังเปิดหน้า Print... <a href="card-detail.html?id=${encodeURIComponent(card.id)}">Open detail</a> · <a href="${printUrl}" target="_blank" rel="noopener noreferrer">Open print manually</a>`;
-      if (printTab) {
-        printTab.location.href = printUrl;
-      } else {
-        window.open(printUrl, '_blank', 'noopener,noreferrer');
+      feedback.innerHTML = `Saved draft <strong>${escapeHtml(card.card_code)}</strong> successfully. <a href="card-detail.html?id=${encodeURIComponent(card.id)}">Open detail</a>${openPrint ? ` · <a href="${printUrl}" target="_blank" rel="noopener noreferrer">Open print manually</a>` : ''}`;
+
+      if (openPrint) {
+        if (printTab) printTab.location.href = printUrl;
+        else window.open(printUrl, '_blank', 'noopener,noreferrer');
       }
-      form.reset();
-      feedback.insertAdjacentHTML('beforeend', ` <span class="small-note">Preview ถูก reset แล้ว พร้อมสร้างใบถัดไป</span>`);
+
+      await refreshCardsCache();
+      if (autoCode.checked) {
+        applyAutoCode();
+      } else {
+        cardCode.value = '';
+        cardLabel.value = '';
+        cardSerial.value = '';
+      }
+      notesEl.value = '';
       await renderPreview();
     } catch (err) {
       if (printTab && !printTab.closed) printTab.close();
       feedback.textContent = err.message || 'Save failed';
+    } finally {
+      saveBtn.disabled = false;
+      savePrintBtn.disabled = false;
     }
+  }
+
+  async function clearForm() {
+    form.reset();
+    faceValue.value = 600;
+    soldPrice.value = 490;
+    batchNo.value = '01';
+    autoCode.checked = true;
+    syncReadOnlyState();
+    feedback.textContent = '';
+    await renderPreview();
+  }
+
+  autoCode.addEventListener('change', async () => {
+    syncReadOnlyState();
+    await renderPreview();
   });
+  [faceValue, batchNo].forEach(el => el.addEventListener('input', async () => {
+    if (autoCode.checked) applyAutoCode();
+    await renderPreview();
+  }));
+  [soldPrice, outletScope, validUntil, notesEl, cardCode, cardLabel, cardSerial].forEach(el => el.addEventListener('input', renderPreview));
+
+  saveBtn.addEventListener('click', () => saveCard({ openPrint: false }));
+  savePrintBtn.addEventListener('click', () => saveCard({ openPrint: true }));
+  nextCodeBtn.addEventListener('click', async () => {
+    await refreshCardsCache();
+    if (autoCode.checked) applyAutoCode();
+    await renderPreview();
+  });
+  clearBtn.addEventListener('click', clearForm);
+
+  await refreshCardsCache();
+  syncReadOnlyState();
+  await renderPreview();
 </script>
-</body></html>
+</body>
+</html>

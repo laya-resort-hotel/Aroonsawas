@@ -168,3 +168,14 @@ tr:hover td { background: rgba(255,255,255,.02); }
   .sale-card-mockup { gap: 8mm; }
   .sale-card-front, .sale-card-back { box-shadow: none; page-break-inside: avoid; }
 }
+
+
+.qr-preview-layout { display:grid; grid-template-columns: 210px 1fr; gap:16px; align-items:start; }
+.qr-preview-visual { display:grid; gap:10px; justify-items:center; }
+.qr-live-code { width: 190px; min-height: 190px; background:#fff; border-radius:16px; padding:10px; display:grid; place-items:center; box-shadow: inset 0 0 0 1px rgba(0,0,0,.05); }
+.qr-live-code > img, .qr-live-code > canvas { width: 170px !important; height: 170px !important; }
+.qr-empty { color:#6b7280; text-align:center; font-size:.9rem; line-height:1.35; padding:20px 10px; }
+@media (max-width: 760px) {
+  .qr-preview-layout { grid-template-columns: 1fr; }
+  .qr-preview-visual { justify-items:start; }
+}
