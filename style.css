@@ -192,3 +192,274 @@ tr:hover td { background: rgba(255,255,255,.02); }
   .qr-preview-layout { grid-template-columns: 1fr; }
   .qr-preview-visual { justify-items:start; }
 }
+
+/* === Free Voucher Theme Override for Sales Voucher v6 === */
+:root {
+  --bg: #f4f2ec;
+  --bg-accent:
+    radial-gradient(circle at top left, rgba(0, 98, 65, 0.12), transparent 34%),
+    radial-gradient(circle at top right, rgba(30, 57, 50, 0.10), transparent 24%),
+    linear-gradient(180deg, #fbfaf6 0%, #f1eee7 100%);
+  --surface: rgba(255,255,255,0.94);
+  --surface-strong: #ffffff;
+  --text: #1f2c27;
+  --muted: #62726a;
+  --line: rgba(30, 57, 50, 0.10);
+  --shadow: 0 16px 42px rgba(15, 35, 28, 0.10);
+  --shadow-soft: 0 10px 26px rgba(15, 35, 28, 0.08);
+  --primary: #006241;
+  --primary-2: #1e3932;
+  --primary-soft: rgba(0, 98, 65, 0.09);
+  --success-bg: #e8f5ea;
+  --success-text: #157347;
+  --danger-bg: #fff0f0;
+  --danger-text: #c0392b;
+  --warning-bg: #fff4df;
+  --warning-text: #9a6500;
+  --info-bg: #ebf3ff;
+  --info-text: #245ea8;
+}
+
+html, body {
+  background: var(--bg-accent);
+  color: var(--text);
+}
+
+.topbar {
+  background:
+    radial-gradient(circle at top right, rgba(255,255,255,0.16), transparent 22%),
+    linear-gradient(135deg, #0d322a 0%, #14543f 42%, #2f6558 100%);
+  border-bottom: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 18px 40px rgba(15, 35, 28, 0.12);
+}
+
+.brand h1, .brand h2, .hero h2, .card h3, .card h4, .login-header h1, .tile h3, label, th {
+  color: var(--text);
+}
+
+.brand small {
+  color: rgba(255,255,255,0.82);
+}
+
+.brand-mark {
+  background: linear-gradient(135deg, #0f6a47, #d0ae67);
+  color: #062117;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.26), 0 12px 22px rgba(0,0,0,.14);
+}
+
+.user-strip .badge,
+.badge {
+  background: rgba(255,255,255,.14);
+  border: 1px solid rgba(255,255,255,.16);
+  color: #fff;
+}
+
+.badge.success {
+  background: rgba(255,255,255,.14);
+  color: #eef9f3;
+}
+
+.badge.warn {
+  background: rgba(208,174,103,.20);
+  color: #fff1cf;
+}
+
+.badge.danger {
+  background: rgba(255,130,130,.18);
+  color: #ffe4e4;
+}
+
+.badge.info {
+  background: rgba(255,255,255,.16);
+  color: #eef6ff;
+}
+
+.navbar {
+  background: transparent;
+  border-bottom: none;
+  padding-top: 14px;
+}
+
+.navbar a {
+  background: rgba(255,255,255,.92);
+  border: 1px solid var(--line);
+  color: var(--primary-2);
+  box-shadow: var(--shadow-soft);
+}
+
+.navbar a.active,
+.navbar a:hover {
+  background: linear-gradient(135deg, rgba(0,98,65,.10), rgba(30,57,50,.08));
+  color: var(--primary-2);
+  border-color: rgba(0,98,65,.26);
+}
+
+.page {
+  max-width: 1180px;
+}
+
+.hero p,
+.helper,
+.card p.helper,
+.notice,
+.footer-note,
+.small-note,
+.qr-empty,
+.auth-subtitle,
+.page-subtitle,
+.login-header p,
+.metric .label,
+.stat-line,
+th {
+  color: var(--muted);
+}
+
+.card,
+.tile,
+.login-card,
+.notice,
+.list-item,
+.table-wrap,
+.scanner-wrap {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+  color: var(--text);
+}
+
+.tile,
+.login-card {
+  background:
+    radial-gradient(circle at top right, rgba(255,255,255,0.20), transparent 24%),
+    linear-gradient(145deg, #1e3932 0%, #14543f 42%, #006241 140%);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 24px 60px rgba(18, 52, 93, 0.18);
+}
+
+.tile h3,
+.tile .helper,
+.login-card .login-header h1,
+.login-card .login-header p,
+.tile .icon {
+  color: #fff;
+}
+
+.tile .icon {
+  background: rgba(255,255,255,0.14);
+}
+
+.metric .value {
+  color: var(--primary-2);
+}
+
+input, select, textarea {
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,.96);
+  color: var(--text);
+  box-shadow: inset 0 1px 2px rgba(15,35,28,.04);
+}
+
+input::placeholder,
+textarea::placeholder { color: #8a958f; }
+
+input:focus, select:focus, textarea:focus {
+  border-color: rgba(0,98,65,.34);
+  box-shadow: 0 0 0 4px rgba(0,98,65,.08);
+}
+
+.btn.primary {
+  background: linear-gradient(135deg, #0f6a47, #1e3932);
+  color: #fff;
+  box-shadow: 0 14px 28px rgba(15,35,28,.14);
+}
+
+.btn.secondary {
+  background: rgba(255,255,255,.92);
+  color: var(--primary-2);
+  border: 1px solid var(--line);
+}
+
+.btn.warn {
+  background: linear-gradient(135deg, #f1d7a0, #d7b16a);
+  color: #3d2d09;
+}
+
+.btn.danger {
+  background: linear-gradient(135deg, #f6c8c6, #ebb2ad);
+  color: #672f2c;
+}
+
+.btn.linkout {
+  background: linear-gradient(135deg, #d7b16a, #bf9450);
+  color: #2f2107;
+}
+
+.table-wrap {
+  overflow: auto;
+}
+
+th {
+  background: #f8f6f1;
+}
+
+td {
+  color: var(--text);
+}
+
+tr:hover td {
+  background: rgba(0,98,65,.035);
+}
+
+.status-draft {
+  background: var(--info-bg);
+  color: var(--info-text);
+}
+.status-active {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+.status-empty {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+.status-disabled, .status-void {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+.status-expired {
+  background: #f1e7cf;
+  color: #846221;
+}
+
+.notice {
+  background: rgba(255,255,255,.84);
+}
+
+.stat-line {
+  border-bottom-color: rgba(30,57,50,.10);
+}
+
+.chart-bar {
+  background: linear-gradient(180deg, #0f6a47, #1e3932);
+}
+
+.scanner-wrap,
+.scanner-region {
+  background: #f3efe6;
+}
+
+.scanner-wrap video {
+  background: #d9e6df;
+}
+
+.qr-live-code {
+  background: #fff;
+  border: 1px solid rgba(30,57,50,.10);
+}
+
+@media print {
+  .sale-card-front, .sale-card-back {
+    box-shadow: none;
+  }
+}
