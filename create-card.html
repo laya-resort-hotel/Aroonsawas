@@ -204,23 +204,13 @@
     }
   }
 
-  function openPrintWaitingTab() {
-    try {
-      const w = window.open('', '_blank');
-      if (w) {
-        w.document.write(`<!doctype html><html><head><title>Preparing print...</title><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;padding:24px;background:#f6f3eb;color:#15372f} .box{max-width:560px;margin:40px auto;background:#fff;border:1px solid #e5ddd0;border-radius:16px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,.08)}</style></head><body><div class="box"><h2>Preparing print card...</h2><p>Please wait while the card is being saved and the print template is opened.</p></div></body></html>`);
-        w.document.close();
-      }
-      return w;
-    } catch {
-      return null;
-    }
-  }
-
   async function saveCard({ openPrint = false } = {}) {
     if (!form.reportValidity()) return;
-    const printTab = openPrint ? openPrintWaitingTab() : null;
-    feedback.textContent = openPrint ? 'Saving draft and opening print template...' : 'Saving draft to Firebase...';
+    let printTab = null;
+    if (openPrint) {
+      try { printTab = window.open('about:blank', '_blank', 'noopener,noreferrer'); } catch {}
+    }
+    feedback.textContent = openPrint ? 'Saving draft to Firebase and opening print...' : 'Saving draft to Firebase...';
     saveBtn.disabled = true;
     savePrintBtn.disabled = true;
     try {
@@ -239,20 +229,8 @@
       feedback.innerHTML = `Saved draft <strong>${escapeHtml(card.card_code)}</strong> successfully. <a href="card-detail.html?id=${encodeURIComponent(card.id)}">Open detail</a>${openPrint ? ` · <a href="${printUrl}" target="_blank" rel="noopener noreferrer">Open print manually</a>` : ''}`;
 
       if (openPrint) {
-        let opened = false;
-        if (printTab && !printTab.closed) {
-          try {
-            printTab.location.href = printUrl;
-            opened = true;
-          } catch {}
-        }
-        if (!opened) {
-          const w = window.open(printUrl, '_blank');
-          opened = !!w;
-        }
-        if (!opened) {
-          feedback.innerHTML += ` <span class="badge warn">Popup blocked</span>`;
-        }
+        if (printTab) printTab.location.href = printUrl;
+        else window.open(printUrl, '_blank', 'noopener,noreferrer');
       }
 
       await refreshCardsCache();
@@ -266,9 +244,7 @@
       notesEl.value = '';
       await renderPreview();
     } catch (err) {
-      if (printTab && !printTab.closed) {
-        try { printTab.close(); } catch {}
-      }
+      if (printTab && !printTab.closed) printTab.close();
       feedback.textContent = err.message || 'Save failed';
     } finally {
       saveBtn.disabled = false;
