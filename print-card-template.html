@@ -54,7 +54,7 @@
                   </div>
                 </div>
               </div>
-              <div class="sale-card-footer sale-card-footer-clean">Present this card before ordering</div>
+              <div class="sale-card-footer sale-card-footer-clean">Redeemable only at ${escapeHtml(card.outlet_scope || 'Aroonsawat')}</div>
             </div>
             <div class="sale-card-back sale-card-back-clean">
               <div class="sale-card-border"></div>
@@ -74,12 +74,13 @@
               </div>
               <div class="sale-card-terms-title">Terms &amp; Conditions</div>
               <ul class="sale-card-terms sale-card-terms-clean">
-                <li>Present this card before ordering.</li>
-                <li>Redeemable only at ${escapeHtml(card.outlet_scope || 'Aroonsawat')}.</li>
-                <li>Non-refundable and has no cash value.</li>
+                <li>Present the QR code or card code before ordering.</li>
+                <li>Valid only for eligible menu purchases under hotel policy.</li>
+                <li>Cannot be combined with other promotions or discounts.</li>
+                <li>Non-refundable, non-transferable, and has no cash value.</li>
               </ul>
               <div class="sale-card-back-footer">
-                <div class="sale-card-note-small">Management may amend terms without prior notice.</div>
+                <div class="sale-card-note-small">Management reserves the right to amend these terms without prior notice.</div>
                 <div class="sale-card-serial">Serial: ${escapeHtml(card.card_serial || card.card_code || '-')}</div>
               </div>
             </div>
