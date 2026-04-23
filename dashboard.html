@@ -3,136 +3,824 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard</title>
+  <title>Reusable Card Dashboard v5.1</title>
   <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 </head>
-<body><div id="app"></div>
-<script type="module">
-  import { mountShell } from './auth-guard.js';
-  import { dashboardData, formatMoney, escapeHtml, toDateTimeText, toDateValue, todayBusinessDate, exportSheetsXlsx, exportPdfReport } from './app.js';
-  await mountShell('dashboard.html','Dashboard','ยอดขายและยอดใช้ของ Sales Voucher v6 เท่านั้น ไม่ปนกับ Free Voucher เดิม');
-  const el = document.getElementById('pageContent');
-  const today = todayBusinessDate();
-  let lastData = null;
-  el.innerHTML = `
-    <div class="card">
-      <div class="form-grid">
-        <div class="field third"><label>From Date</label><input id="fromDate" type="date" value="${today}"></div>
-        <div class="field third"><label>To Date</label><input id="toDate" type="date" value="${today}"></div>
-        <div class="field third"><label>Outlet</label><input id="outlet" placeholder="All outlets"></div>
+<body class="app-page">
+  <div class="container app-shell">
+    <section class="page-header">
+      <div class="page-header-row">
+        <div>
+          <span class="soft-badge">Analytics v5.1</span>
+          <h1>Reusable Card Dashboard Report</h1>
+          <p class="page-subtitle">รีพอร์ตเวอร์ชันใหม่สำหรับโหมดการ์ดถาวร ดูยอดใช้จริงจาก <strong>voucher_logs</strong> และดูสถานะการ์ดปัจจุบันจาก <strong>vouchers</strong> ในหน้าเดียว</p>
+          <div class="meta-row" id="activeMetaRow"></div>
+        </div>
       </div>
-      <div class="btn-row" style="margin-top:12px">
-        <button id="applyBtn" class="btn primary" type="button">Apply Filter</button>
-        <button id="resetBtn" class="btn secondary" type="button">Today</button>
-        <button id="xlsxBtn" class="btn secondary" type="button">Export XLSX</button>
-        <button id="pdfBtn" class="btn secondary" type="button">Export PDF</button>
+    </section>
+
+    <div class="card section-card">
+      <h2>Filter</h2>
+      <div class="filter-grid report-filter-grid">
+        <div>
+          <label for="periodPreset">Activity Period</label>
+          <select id="periodPreset">
+            <option value="today">Today</option>
+            <option value="7days">Last 7 Days</option>
+            <option value="30days">Last 30 Days</option>
+            <option value="month">This Month</option>
+            <option value="all">All Time</option>
+            <option value="custom">Custom Range</option>
+          </select>
+        </div>
+        <div>
+          <label for="dateFrom">Date From</label>
+          <input id="dateFrom" type="date" />
+        </div>
+        <div>
+          <label for="dateTo">Date To</label>
+          <input id="dateTo" type="date" />
+        </div>
+        <div>
+          <label for="outletFilter">Outlet</label>
+          <select id="outletFilter"><option value="all">All</option></select>
+        </div>
+        <div>
+          <label for="groupFilter">Card Group</label>
+          <select id="groupFilter"><option value="all">All</option></select>
+        </div>
+        <div>
+          <label for="statusFilter">Snapshot Status</label>
+          <select id="statusFilter">
+            <option value="all">All</option>
+            <option value="issued">Available</option>
+            <option value="redeemed">Used</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </div>
+      </div>
+      <p class="ref">Activity Period ใช้กับรีพอร์ตการใช้งานและ log ส่วน Outlet / Card Group ใช้กับทุกส่วนของ dashboard ส่วน Snapshot Status ใช้กรองตาราง Current Card Snapshot</p>
+      <div class="filter-actions">
+        <button id="applyBtn" type="button">Apply Filter</button>
+        <button id="resetBtn" type="button" class="button-secondary">Reset</button>
+        <button id="exportBtn" type="button" class="button-ghost">Export XLSX</button>
+        <button id="posPrintBtn" type="button" class="button-secondary">POS Print Report</button>
       </div>
     </div>
-    <div id="dashBox" class="notice" style="margin-top:16px">กำลังโหลดข้อมูล...</div>`;
 
-  const fromDateEl = document.getElementById('fromDate');
-  const toDateEl = document.getElementById('toDate');
-  const outletEl = document.getElementById('outlet');
-  const dashBoxEl = document.getElementById('dashBox');
+    <div class="stats-grid report-kpi-grid">
+      <div class="stat-card"><div class="stat-label">Today Redeemed</div><div class="stat-value" id="todayRedeemedCount">0</div><div class="kpi-note">จำนวนครั้งที่ใช้วันนี้</div></div>
+      <div class="stat-card"><div class="stat-label">Today Reused</div><div class="stat-value" id="todayReusedCount">0</div><div class="kpi-note">FO reset กลับมาใช้ใหม่วันนี้</div></div>
+      <div class="stat-card"><div class="stat-label">Available Now</div><div class="stat-value" id="availableNowCount">0</div><div class="kpi-note">การ์ดพร้อมแจกตอนนี้</div></div>
+      <div class="stat-card"><div class="stat-label">Used Now</div><div class="stat-value" id="usedNowCount">0</div><div class="kpi-note">การ์ดใช้แล้วรอรับคืน</div></div>
+      <div class="stat-card"><div class="stat-label">Disabled Now</div><div class="stat-value" id="disabledNowCount">0</div><div class="kpi-note">การ์ดงดใช้งาน</div></div>
+      <div class="stat-card"><div class="stat-label">Awaiting Return</div><div class="stat-value" id="awaitingReturnCount">0</div><div class="kpi-note">จำนวนการ์ดที่ยังไม่ถูก reset</div></div>
+      <div class="stat-card"><div class="stat-label">7-Day Redeemed</div><div class="stat-value" id="sevenDayRedeemedCount">0</div><div class="kpi-note">จำนวนครั้งที่ใช้ใน 7 วันล่าสุด</div></div>
+      <div class="stat-card"><div class="stat-label">30-Day Redeemed</div><div class="stat-value" id="thirtyDayRedeemedCount">0</div><div class="kpi-note">จำนวนครั้งที่ใช้ใน 30 วันล่าสุด</div></div>
+    </div>
 
-  function currentRangeText() {
-    return `${fromDateEl.value || today} to ${toDateEl.value || today}${outletEl.value.trim() ? ` · Outlet: ${outletEl.value.trim()}` : ''}`;
-  }
+    <div class="report-two-col">
+      <div class="card section-card">
+        <h2>Current Stock by Outlet</h2>
+        <div class="table-wrap">
+          <table class="voucher-table">
+            <thead><tr><th>Outlet</th><th>Total</th><th>Available</th><th>Used</th><th>Disabled</th></tr></thead>
+            <tbody id="stockOutletBody"><tr><td colspan="5">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card section-card">
+        <h2>Redeem by Outlet <span class="inline-section-meta" id="periodLabelOutlet">(Today)</span></h2>
+        <div class="table-wrap">
+          <table class="voucher-table">
+            <thead><tr><th>Outlet</th><th>Redeemed</th><th>Reused</th><th>Disabled</th><th>Enabled</th></tr></thead>
+            <tbody id="redeemOutletBody"><tr><td colspan="5">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
-  async function render() {
-    dashBoxEl.innerHTML = 'กำลังโหลดข้อมูล...';
-    try {
-      const data = await dashboardData({ fromDate: fromDateEl.value, toDate: toDateEl.value, outlet: outletEl.value.trim() });
-      lastData = data;
-      const { stats, byOutlet, byStaff, recentTransactions, lowBalanceCards, nearExpiryCards, recentlyEmptied, trendDays, range } = data;
-      const maxBar = Math.max(1, ...trendDays.flatMap(d => [d.sales, d.debit]));
-      dashBoxEl.innerHTML = `
-      <div class="helper" style="margin-bottom:12px">ช่วงข้อมูล: <strong>${escapeHtml(range.fromDate)}</strong> ถึง <strong>${escapeHtml(range.toDate)}</strong>${outletEl.value.trim() ? ` · Outlet: <strong>${escapeHtml(outletEl.value.trim())}</strong>` : ''}</div>
-      <div class="kpi-grid">
-        <div class="card kpi"><div class="metric"><div class="label">Sales</div><div class="value">${formatMoney(stats.salesToday)}</div></div></div>
-        <div class="card kpi"><div class="metric"><div class="label">Cards Sold</div><div class="value">${stats.cardsSoldToday}</div></div></div>
-        <div class="card kpi"><div class="metric"><div class="label">Redeemed</div><div class="value">${formatMoney(stats.redeemedToday)}</div></div></div>
-        <div class="card kpi"><div class="metric"><div class="label">Outstanding</div><div class="value">${formatMoney(stats.outstanding)}</div></div></div>
-        <div class="card kpi"><div class="metric"><div class="label">Active Cards</div><div class="value">${stats.activeCards}</div></div></div>
-        <div class="card kpi"><div class="metric"><div class="label">Empty Cards</div><div class="value">${stats.emptyCards}</div></div></div>
-        <div class="card kpi"><div class="metric"><div class="label">Draft Cards</div><div class="value">${stats.draftCards}</div></div></div>
-        <div class="card kpi"><div class="metric"><div class="label">Disabled Cards</div><div class="value">${stats.disabledCards}</div></div></div>
+    <div class="report-two-col">
+      <div class="card section-card">
+        <h2>Redeem by Staff <span class="inline-section-meta" id="periodLabelStaff">(Today)</span></h2>
+        <div class="table-wrap">
+          <table class="voucher-table">
+            <thead><tr><th>Staff</th><th>Role</th><th>Redeemed</th><th>Reused</th></tr></thead>
+            <tbody id="staffBody"><tr><td colspan="4">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
       </div>
-      <div class="split">
-        <div class="card"><h3>7-Day Sales Trend</h3><div class="chart-box">${trendDays.map(d => `<div class="chart-bar" style="height:${Math.max(22, (d.sales/maxBar)*180)}px"><strong>${d.sales ? Math.round(d.sales) : ''}</strong><span>${d.label}</span></div>`).join('')}</div></div>
-        <div class="card"><h3>7-Day Redeemed Trend</h3><div class="chart-box">${trendDays.map(d => `<div class="chart-bar" style="height:${Math.max(22, (d.debit/maxBar)*180)}px;background:linear-gradient(180deg,#7db8ff,#4573d6)"><strong>${d.debit ? Math.round(d.debit) : ''}</strong><span>${d.label}</span></div>`).join('')}</div></div>
+      <div class="card section-card">
+        <h2>7-Day Redeem Trend</h2>
+        <div id="trendBody" class="trend-list"><p class="ref">กำลังโหลด...</p></div>
       </div>
-      <div class="split" style="margin-top:16px">
-        <div class="card"><h3>Debit by Outlet</h3><div class="list">${(byOutlet.length?byOutlet:[{label:'No data',value:0}]).map(r => `<div class="list-item"><div class="stat-line"><span>${escapeHtml(r.label)}</span><strong>${formatMoney(r.value)}</strong></div></div>`).join('')}</div></div>
-        <div class="card"><h3>Debit by Staff</h3><div class="list">${(byStaff.length?byStaff:[{label:'No data',value:0}]).map(r => `<div class="list-item"><div class="stat-line"><span>${escapeHtml(r.label)}</span><strong>${formatMoney(r.value)}</strong></div></div>`).join('')}</div></div>
+    </div>
+
+    <div class="report-two-col">
+      <div class="card section-card">
+        <h2>Top Used Cards <span class="inline-section-meta" id="periodLabelTopCards">(Today)</span></h2>
+        <div class="table-wrap">
+          <table class="voucher-table">
+            <thead><tr><th>Card Label</th><th>Voucher Code</th><th>Outlet</th><th>Redeemed</th></tr></thead>
+            <tbody id="topCardsBody"><tr><td colspan="4">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
       </div>
-      <div class="card" style="margin-top:16px"><h3>Recent Transactions</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Card</th><th>Amount</th><th>After</th><th>Outlet</th><th>Staff</th></tr></thead><tbody>${recentTransactions.length ? recentTransactions.map(t => `<tr><td>${toDateTimeText(t.created_at)}</td><td>${escapeHtml(t.txn_type)}</td><td><a href="card-detail.html?id=${encodeURIComponent(t.card_id)}">${escapeHtml(t.card_code)}</a></td><td>${formatMoney(t.amount)}</td><td>${formatMoney(t.balance_after)}</td><td>${escapeHtml(t.outlet||'-')}</td><td>${escapeHtml(t.staff_name||'-')}</td></tr>`).join('') : '<tr><td colspan="7">No transactions found in this range.</td></tr>'}</tbody></table></div></div>
-      <div class="split" style="margin-top:16px">
-        <div class="card"><h3>Low Balance Cards</h3><div class="list">${lowBalanceCards.length ? lowBalanceCards.map(c => `<a class="list-item" href="card-detail.html?id=${c.id}"><div class="stat-line"><span>${escapeHtml(c.card_label)} <small>${escapeHtml(c.card_code)}</small></span><strong>${formatMoney(c.remaining_balance)}</strong></div></a>`).join('') : '<div class="helper">No low-balance cards.</div>'}</div></div>
-        <div class="card"><h3>Cards Near Expiry</h3><div class="list">${nearExpiryCards.length ? nearExpiryCards.map(c => `<a class="list-item" href="card-detail.html?id=${c.id}"><div class="stat-line"><span>${escapeHtml(c.card_label)}</span><strong>${escapeHtml(toDateValue(c.valid_until) || '-')}</strong></div></a>`).join('') : '<div class="helper">No expiry dates found.</div>'}</div></div>
+      <div class="card section-card">
+        <h2>Cards Awaiting Return</h2>
+        <div class="table-wrap">
+          <table class="voucher-table">
+            <thead><tr><th>Card Label</th><th>Voucher Code</th><th>Outlet</th><th>Redeemed At</th><th>Waiting</th></tr></thead>
+            <tbody id="awaitingBody"><tr><td colspan="5">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
       </div>
-      <div class="card" style="margin-top:16px"><h3>Recently Emptied Cards</h3><div class="list">${recentlyEmptied.length ? recentlyEmptied.map(c => `<a class="list-item" href="card-detail.html?id=${c.id}"><div class="stat-line"><span>${escapeHtml(c.card_label)} / ${escapeHtml(c.card_code)}</span><strong>${toDateTimeText(c.last_used_at)}</strong></div></a>`).join('') : '<div class="helper">No empty cards yet.</div>'}</div></div>`;
-    } catch (err) {
-      lastData = null;
-      dashBoxEl.innerHTML = `<div class="card"><h3>Dashboard load failed</h3><div class="helper">${escapeHtml(err.message || 'Unknown error')}</div><div class="helper" style="margin-top:8px">ตรวจ Firestore Rules และ collection sale_cards / sale_card_transactions / sale_settings</div></div>`;
+    </div>
+
+    <div class="card section-card">
+      <h2>Recent Activity <span class="inline-section-meta" id="periodLabelActivity">(Today)</span></h2>
+      <div class="table-wrap">
+        <table class="voucher-table">
+          <thead><tr><th>Action Time</th><th>Action</th><th>Card</th><th>Voucher Code</th><th>Outlet</th><th>By</th><th>Note</th></tr></thead>
+          <tbody id="activityBody"><tr><td colspan="7">กำลังโหลด...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card section-card">
+      <h2>Current Card Snapshot</h2>
+      <div class="table-wrap">
+        <table class="voucher-table">
+          <thead><tr><th>Card Label</th><th>Voucher Code</th><th>Card Group</th><th>Outlet</th><th>Status</th><th>Redeemed At</th><th>Reset Count</th></tr></thead>
+          <tbody id="snapshotBody"><tr><td colspan="7">กำลังโหลด...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="nav" id="navMenu"></div>
+  </div>
+
+  <script type="module">
+    import { db } from "./firebase-config.js";
+    import { requireRole, renderNav } from "./auth-guard.js";
+    import { collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+
+    const { profile } = await requireRole(["supervisor", "manager", "admin"]);
+    renderNav(profile);
+
+    const periodPreset = document.getElementById("periodPreset");
+    const dateFrom = document.getElementById("dateFrom");
+    const dateTo = document.getElementById("dateTo");
+    const outletFilter = document.getElementById("outletFilter");
+    const groupFilter = document.getElementById("groupFilter");
+    const statusFilter = document.getElementById("statusFilter");
+    const applyBtn = document.getElementById("applyBtn");
+    const resetBtn = document.getElementById("resetBtn");
+    const exportBtn = document.getElementById("exportBtn");
+    const posPrintBtn = document.getElementById("posPrintBtn");
+
+    const activeMetaRow = document.getElementById("activeMetaRow");
+    const todayRedeemedCount = document.getElementById("todayRedeemedCount");
+    const todayReusedCount = document.getElementById("todayReusedCount");
+    const availableNowCount = document.getElementById("availableNowCount");
+    const usedNowCount = document.getElementById("usedNowCount");
+    const disabledNowCount = document.getElementById("disabledNowCount");
+    const awaitingReturnCount = document.getElementById("awaitingReturnCount");
+    const sevenDayRedeemedCount = document.getElementById("sevenDayRedeemedCount");
+    const thirtyDayRedeemedCount = document.getElementById("thirtyDayRedeemedCount");
+
+    const stockOutletBody = document.getElementById("stockOutletBody");
+    const redeemOutletBody = document.getElementById("redeemOutletBody");
+    const staffBody = document.getElementById("staffBody");
+    const trendBody = document.getElementById("trendBody");
+    const topCardsBody = document.getElementById("topCardsBody");
+    const awaitingBody = document.getElementById("awaitingBody");
+    const activityBody = document.getElementById("activityBody");
+    const snapshotBody = document.getElementById("snapshotBody");
+
+    const periodLabelOutlet = document.getElementById("periodLabelOutlet");
+    const periodLabelStaff = document.getElementById("periodLabelStaff");
+    const periodLabelTopCards = document.getElementById("periodLabelTopCards");
+    const periodLabelActivity = document.getElementById("periodLabelActivity");
+
+    let cards = [];
+    let logs = [];
+    let cardMap = new Map();
+    let dashboardState = {
+      scopeCards: [],
+      snapshotCards: [],
+      scopeLogs: [],
+      periodLogs: [],
+      stockByOutlet: [],
+      redeemByOutlet: [],
+      redeemByStaff: [],
+      topCards: [],
+      awaitingReturn: [],
+      recentActivity: [],
+      trendRows: [],
+      rangeLabel: "Today"
+    };
+
+    function toDate(value) {
+      if (!value) return null;
+      try {
+        if (value?.toDate) return value.toDate();
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? null : d;
+      } catch {
+        return null;
+      }
     }
-  }
 
-  async function exportDashboardXlsx() {
-    if (!lastData) return alert('Load dashboard data first.');
-    const { stats, byOutlet, byStaff, recentTransactions, lowBalanceCards, nearExpiryCards, recentlyEmptied, trendDays } = lastData;
-    await exportSheetsXlsx(`sales-voucher-dashboard-${todayBusinessDate()}.xlsx`, [
-      { name: 'Summary', rows: [
-        { Metric: 'Range', Value: currentRangeText() },
-        { Metric: 'Sales', Value: stats.salesToday },
-        { Metric: 'Cards Sold', Value: stats.cardsSoldToday },
-        { Metric: 'Redeemed', Value: stats.redeemedToday },
-        { Metric: 'Outstanding', Value: stats.outstanding },
-        { Metric: 'Active Cards', Value: stats.activeCards },
-        { Metric: 'Empty Cards', Value: stats.emptyCards },
-        { Metric: 'Draft Cards', Value: stats.draftCards },
-        { Metric: 'Disabled Cards', Value: stats.disabledCards }
-      ]},
-      { name: 'Trend', rows: trendDays.map(r => ({ Date: r.key, Label: r.label, Sales: r.sales, Redeemed: r.debit })) },
-      { name: 'By Outlet', rows: byOutlet.map(r => ({ Outlet: r.label, Redeemed: r.value })) },
-      { name: 'By Staff', rows: byStaff.map(r => ({ Staff: r.label, Redeemed: r.value })) },
-      { name: 'Recent Txns', rows: recentTransactions.map(t => ({ Date: toDateTimeText(t.created_at), Type: t.txn_type, Card: t.card_code, Amount: t.amount, After: t.balance_after, Outlet: t.outlet, Staff: t.staff_name })) },
-      { name: 'Low Balance', rows: lowBalanceCards.map(c => ({ Card: c.card_code, Label: c.card_label, Remaining: c.remaining_balance, Status: c.status })) },
-      { name: 'Near Expiry', rows: nearExpiryCards.map(c => ({ Card: c.card_code, Label: c.card_label, ValidUntil: toDateValue(c.valid_until) || '' })) },
-      { name: 'Recently Empty', rows: recentlyEmptied.map(c => ({ Card: c.card_code, Label: c.card_label, LastUsed: toDateTimeText(c.last_used_at) })) }
-    ]);
-  }
+    function fmtDateTime(value) {
+      const d = toDate(value);
+      return d ? d.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" }) : "-";
+    }
 
-  async function exportDashboardPdf() {
-    if (!lastData) return alert('Load dashboard data first.');
-    const { stats, byOutlet, byStaff, recentTransactions } = lastData;
-    await exportPdfReport({
-      fileName: `sales-voucher-dashboard-${todayBusinessDate()}.pdf`,
-      title: 'Laya Sales Voucher v6 Dashboard',
-      subtitle: currentRangeText(),
-      summaryRows: [
-        ['Sales', formatMoney(stats.salesToday)],
-        ['Cards Sold', stats.cardsSoldToday],
-        ['Redeemed', formatMoney(stats.redeemedToday)],
-        ['Outstanding', formatMoney(stats.outstanding)],
-        ['Active Cards', stats.activeCards],
-        ['Empty Cards', stats.emptyCards],
-        ['Draft Cards', stats.draftCards],
-        ['Disabled Cards', stats.disabledCards]
-      ],
-      tables: [
-        { title: 'Redeemed by Outlet', head: ['Outlet', 'Redeemed'], body: (byOutlet.length ? byOutlet : [{ label: 'No data', value: 0 }]).map(r => [r.label, formatMoney(r.value)]) },
-        { title: 'Redeemed by Staff', head: ['Staff', 'Redeemed'], body: (byStaff.length ? byStaff : [{ label: 'No data', value: 0 }]).map(r => [r.label, formatMoney(r.value)]) },
-        { title: 'Recent Transactions', head: ['Date', 'Type', 'Card', 'Amount', 'After', 'Outlet', 'Staff'], body: recentTransactions.map(t => [toDateTimeText(t.created_at), t.txn_type, t.card_code, formatMoney(t.amount), formatMoney(t.balance_after), t.outlet || '-', t.staff_name || '-']) }
-      ]
+    function fmtDate(value) {
+      const d = toDate(value);
+      return d ? d.toLocaleDateString("th-TH", { dateStyle: "medium" }) : "-";
+    }
+
+    function dateInputValue(value) {
+      const d = toDate(value);
+      if (!d) return "";
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    function startOfDay(date) {
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    }
+
+    function endOfDay(date) {
+      const d = new Date(date);
+      d.setHours(23, 59, 59, 999);
+      return d;
+    }
+
+    function daysAgoStart(days) {
+      const d = new Date();
+      d.setDate(d.getDate() - days);
+      return startOfDay(d);
+    }
+
+    function hoursSince(value) {
+      const d = toDate(value);
+      if (!d) return "-";
+      const ms = Date.now() - d.getTime();
+      const totalHours = Math.max(0, Math.floor(ms / 3600000));
+      if (totalHours < 24) return `${totalHours}h`;
+      const days = Math.floor(totalHours / 24);
+      const hours = totalHours % 24;
+      return `${days}d ${hours}h`;
+    }
+
+    function statusLabel(status) {
+      if (status === "issued") return "Available";
+      if (status === "redeemed") return "Used";
+      if (status === "disabled") return "Disabled";
+      return status || "-";
+    }
+
+    function actionLabel(action) {
+      if (action === "redeemed") return "Redeemed";
+      if (action === "reused") return "Reused";
+      if (action === "disabled") return "Disabled";
+      if (action === "enabled") return "Enabled";
+      if (action === "issued") return "Issued";
+      return action || "-";
+    }
+
+    function allowByScopeCard(data) {
+      if (profile.role === "admin") return true;
+      return (data.department || "") === (profile.department || "");
+    }
+
+    function allowByScopeLog(log) {
+      if (profile.role === "admin") return true;
+      const joined = cardMap.get(log.voucher_code || "");
+      return (joined?.department || log.department || "") === (profile.department || "");
+    }
+
+    function getTodayRange() {
+      return { start: startOfDay(new Date()), end: endOfDay(new Date()) };
+    }
+
+    function getSevenDayRange() {
+      return { start: daysAgoStart(6), end: endOfDay(new Date()) };
+    }
+
+    function getThirtyDayRange() {
+      return { start: daysAgoStart(29), end: endOfDay(new Date()) };
+    }
+
+    function getSelectedRange() {
+      const now = new Date();
+      if (periodPreset.value === "today") return { start: startOfDay(now), end: endOfDay(now), label: "Today" };
+      if (periodPreset.value === "7days") return { start: daysAgoStart(6), end: endOfDay(now), label: "Last 7 Days" };
+      if (periodPreset.value === "30days") return { start: daysAgoStart(29), end: endOfDay(now), label: "Last 30 Days" };
+      if (periodPreset.value === "month") {
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        return { start: startOfDay(start), end: endOfDay(now), label: "This Month" };
+      }
+      if (periodPreset.value === "all") return { start: null, end: null, label: "All Time" };
+      const start = dateFrom.value ? startOfDay(new Date(dateFrom.value)) : null;
+      const end = dateTo.value ? endOfDay(new Date(dateTo.value)) : null;
+      return { start, end, label: start || end ? `${start ? fmtDate(start) : "Beginning"} - ${end ? fmtDate(end) : "Now"}` : "Custom Range" };
+    }
+
+    function inRange(value, range) {
+      const d = toDate(value);
+      if (!d) return false;
+      if (range.start && d < range.start) return false;
+      if (range.end && d > range.end) return false;
+      return true;
+    }
+
+    function updateDateInputsState() {
+      const custom = periodPreset.value === "custom";
+      dateFrom.disabled = !custom;
+      dateTo.disabled = !custom;
+      if (!custom) {
+        const range = getSelectedRange();
+        dateFrom.value = range.start ? dateInputValue(range.start) : "";
+        dateTo.value = range.end ? dateInputValue(range.end) : "";
+      }
+    }
+
+    function populateSelects() {
+      const outlets = Array.from(new Set(cards.map((x) => x.outlet || "-").filter(Boolean))).sort();
+      const groups = Array.from(new Set(cards.map((x) => x.card_group || "-").filter(Boolean))).sort();
+      outletFilter.innerHTML = `<option value="all">All</option>${outlets.map((x) => `<option value="${x}">${x}</option>`).join("")}`;
+      groupFilter.innerHTML = `<option value="all">All</option>${groups.map((x) => `<option value="${x}">${x}</option>`).join("")}`;
+    }
+
+    async function loadData() {
+      const [cardsSnap, logsSnap] = await Promise.all([
+        getDocs(query(collection(db, "vouchers"), where("voucher_mode", "==", "reusable_card"))),
+        getDocs(collection(db, "voucher_logs"))
+      ]);
+
+      cards = cardsSnap.docs.map((d) => ({ id: d.id, ...d.data() })).filter(allowByScopeCard);
+      cardMap = new Map(cards.map((card) => [card.voucher_code || `card-${card.id}`, card]));
+
+      logs = logsSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((log) => cardMap.has(log.voucher_code || ""))
+        .filter(allowByScopeLog)
+        .map((log) => {
+          const joined = cardMap.get(log.voucher_code || "") || {};
+          return {
+            ...log,
+            card_label: joined.card_label || joined.voucher_code || "-",
+            card_group: joined.card_group || "-",
+            card_outlet: joined.outlet || log.outlet || "-",
+            card_department: joined.department || log.department || "-"
+          };
+        });
+
+      populateSelects();
+      updateDateInputsState();
+      applyFilters();
+    }
+
+    function buildCountsByOutlet(sourceCards) {
+      const map = {};
+      sourceCards.forEach((card) => {
+        const key = card.outlet || "-";
+        if (!map[key]) map[key] = { outlet: key, total: 0, issued: 0, redeemed: 0, disabled: 0 };
+        map[key].total += 1;
+        if (card.status === "issued") map[key].issued += 1;
+        if (card.status === "redeemed") map[key].redeemed += 1;
+        if (card.status === "disabled") map[key].disabled += 1;
+      });
+      return Object.values(map).sort((a, b) => a.outlet.localeCompare(b.outlet));
+    }
+
+    function buildActionSummaryByOutlet(sourceLogs) {
+      const map = {};
+      sourceLogs.forEach((log) => {
+        const key = log.card_outlet || log.outlet || "-";
+        if (!map[key]) map[key] = { outlet: key, redeemed: 0, reused: 0, disabled: 0, enabled: 0 };
+        if (log.action === "redeemed") map[key].redeemed += 1;
+        if (log.action === "reused") map[key].reused += 1;
+        if (log.action === "disabled") map[key].disabled += 1;
+        if (log.action === "enabled") map[key].enabled += 1;
+      });
+      return Object.values(map).sort((a, b) => (b.redeemed + b.reused) - (a.redeemed + a.reused) || a.outlet.localeCompare(b.outlet));
+    }
+
+    function buildRedeemByStaff(sourceLogs) {
+      const map = {};
+      sourceLogs.forEach((log) => {
+        const key = log.action_by_name || log.action_by_uid || "Unknown";
+        if (!map[key]) map[key] = { staff: key, role: log.action_by_role || "-", redeemed: 0, reused: 0 };
+        if (log.action === "redeemed") map[key].redeemed += 1;
+        if (log.action === "reused") map[key].reused += 1;
+      });
+      return Object.values(map)
+        .sort((a, b) => (b.redeemed - a.redeemed) || (b.reused - a.reused) || a.staff.localeCompare(b.staff))
+        .slice(0, 20);
+    }
+
+    function buildTopCards(sourceLogs) {
+      const map = {};
+      sourceLogs.filter((log) => log.action === "redeemed").forEach((log) => {
+        const key = log.voucher_code || "-";
+        if (!map[key]) {
+          map[key] = {
+            card_label: log.card_label || "-",
+            voucher_code: key,
+            outlet: log.card_outlet || log.outlet || "-",
+            redeemed: 0
+          };
+        }
+        map[key].redeemed += 1;
+      });
+      return Object.values(map).sort((a, b) => b.redeemed - a.redeemed || a.card_label.localeCompare(b.card_label)).slice(0, 20);
+    }
+
+    function buildTrendRows(sourceLogs) {
+      const range = getSevenDayRange();
+      const redeemLogs = sourceLogs.filter((log) => log.action === "redeemed" && inRange(log.action_at, range));
+      const rows = [];
+      for (let offset = 6; offset >= 0; offset -= 1) {
+        const date = daysAgoStart(offset);
+        const start = startOfDay(date);
+        const end = endOfDay(date);
+        const count = redeemLogs.filter((log) => inRange(log.action_at, { start, end })).length;
+        rows.push({
+          label: date.toLocaleDateString("th-TH", { weekday: "short", month: "short", day: "numeric" }),
+          count
+        });
+      }
+      const max = Math.max(1, ...rows.map((row) => row.count));
+      return rows.map((row) => ({ ...row, percent: Math.max(6, Math.round((row.count / max) * 100)) }));
+    }
+
+    function setMetaChips(rangeLabel, scopeCards, periodLogs) {
+      const chips = [
+        `Scope: ${profile.role === "admin" ? "All departments" : (profile.department || "Department")}`,
+        `Outlet: ${outletFilter.value === "all" ? "All" : outletFilter.value}`,
+        `Card Group: ${groupFilter.value === "all" ? "All" : groupFilter.value}`,
+        `Activity Period: ${rangeLabel}`,
+        `Cards in Scope: ${scopeCards.length}`,
+        `Logs in Period: ${periodLogs.length}`
+      ];
+      activeMetaRow.innerHTML = chips.map((chip) => `<span class="role-badge">${chip}</span>`).join("");
+    }
+
+    function renderTrend(rows) {
+      if (!rows.length) {
+        trendBody.innerHTML = `<p class="ref">ยังไม่มีข้อมูลการใช้ใน 7 วันล่าสุด</p>`;
+        return;
+      }
+      trendBody.innerHTML = rows.map((row) => `
+        <div class="trend-row">
+          <div class="trend-label">${row.label}</div>
+          <div class="trend-track"><div class="trend-fill" style="width:${row.percent}%"></div></div>
+          <div class="trend-value">${row.count}</div>
+        </div>
+      `).join("");
+    }
+
+    function renderTableRows(target, html, colspan, empty = "ไม่พบข้อมูล") {
+      target.innerHTML = html || `<tr><td colspan="${colspan}">${empty}</td></tr>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function buildPosSectionTable(title, headers, rows) {
+      const head = headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("");
+      const body = rows.length
+        ? rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")
+        : `<tr><td colspan="${headers.length}">No data</td></tr>`;
+      return `
+        <section class="receipt-section">
+          <h3>${escapeHtml(title)}</h3>
+          <table>
+            <thead><tr>${head}</tr></thead>
+            <tbody>${body}</tbody>
+          </table>
+        </section>
+      `;
+    }
+
+    function openPosPrintView() {
+      const receiptHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>POS Report</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f4f4f4; font-family: Arial, Helvetica, sans-serif; color: #111; }
+    .toolbar { position: sticky; top: 0; z-index: 2; display: flex; gap: 10px; justify-content: center; padding: 12px; background: #ffffff; border-bottom: 1px solid #ddd; }
+    .toolbar button { border: 1px solid #111; background: #111; color: #fff; border-radius: 8px; padding: 10px 14px; font-size: 14px; cursor: pointer; }
+    .toolbar button.secondary { background: #fff; color: #111; }
+    .receipt { width: 80mm; max-width: 100%; margin: 14px auto 28px; background: #fff; padding: 10px 8px 18px; box-shadow: 0 6px 24px rgba(0,0,0,.12); }
+    .center { text-align: center; }
+    .title { font-size: 18px; font-weight: 700; }
+    .sub { font-size: 12px; margin-top: 4px; }
+    .line { border-top: 1px dashed #000; margin: 10px 0; }
+    .meta, .summary { width: 100%; border-collapse: collapse; }
+    .meta td, .summary td { padding: 2px 0; font-size: 12px; vertical-align: top; }
+    .meta td:last-child, .summary td:last-child { text-align: right; }
+    .receipt-section { margin-top: 12px; }
+    .receipt-section h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .4px; }
+    .receipt-section table { width: 100%; border-collapse: collapse; }
+    .receipt-section th, .receipt-section td { font-size: 11px; padding: 4px 2px; border-bottom: 1px dotted #bbb; text-align: left; word-break: break-word; }
+    .receipt-section th:last-child, .receipt-section td:last-child { text-align: right; }
+    .footer { margin-top: 12px; font-size: 11px; text-align: center; }
+    @media print {
+      body { background: #fff; }
+      .toolbar { display: none !important; }
+      .receipt { width: 80mm; margin: 0 auto; box-shadow: none; padding: 0 2mm 8mm; }
+      @page { size: 80mm auto; margin: 2mm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button onclick="window.print()">Print POS Slip</button>
+    <button class="secondary" onclick="window.close()">Close</button>
+  </div>
+  <main class="receipt">
+    <div class="center">
+      <div class="title">LAYA POS REPORT</div>
+      <div class="sub">Reusable Card Activity Summary</div>
+    </div>
+    <div class="line"></div>
+    <table class="meta">
+      <tr><td>Period</td><td>${escapeHtml(dashboardState.rangeLabel)}</td></tr>
+      <tr><td>Outlet</td><td>${escapeHtml(outletFilter.value === "all" ? "All" : outletFilter.value)}</td></tr>
+      <tr><td>Card Group</td><td>${escapeHtml(groupFilter.value === "all" ? "All" : groupFilter.value)}</td></tr>
+      <tr><td>Status</td><td>${escapeHtml(statusFilter.value === "all" ? "All" : statusLabel(statusFilter.value))}</td></tr>
+      <tr><td>Printed At</td><td>${escapeHtml(new Date().toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" }))}</td></tr>
+    </table>
+    <div class="line"></div>
+    <table class="summary">
+      <tr><td>Today Redeemed</td><td>${escapeHtml(todayRedeemedCount.textContent)}</td></tr>
+      <tr><td>Today Reused</td><td>${escapeHtml(todayReusedCount.textContent)}</td></tr>
+      <tr><td>Available Now</td><td>${escapeHtml(availableNowCount.textContent)}</td></tr>
+      <tr><td>Used Now</td><td>${escapeHtml(usedNowCount.textContent)}</td></tr>
+      <tr><td>Awaiting Return</td><td>${escapeHtml(awaitingReturnCount.textContent)}</td></tr>
+    </table>
+    <div class="line"></div>
+    ${buildPosSectionTable("Redeem by Outlet", ["Outlet", "Redeem", "Reuse"], dashboardState.redeemByOutlet.slice(0, 20).map((row) => [row.outlet, row.redeemed, row.reused]))}
+    ${buildPosSectionTable("Redeem by Staff", ["Staff", "Redeem", "Reuse"], dashboardState.redeemByStaff.slice(0, 20).map((row) => [row.staff, row.redeemed, row.reused]))}
+    ${buildPosSectionTable("Top Used Card", ["Card", "Outlet", "Used"], dashboardState.topCards.slice(0, 20).map((row) => [row.card_label || row.voucher_code, row.outlet, row.redeemed]))}
+    <div class="line"></div>
+    <div class="footer">End of Report</div>
+  </main>
+</body>
+</html>`;
+
+      const printWindow = window.open("", "_blank", "width=420,height=900");
+      if (!printWindow) {
+        alert("เบราว์เซอร์บล็อกหน้าต่างป๊อปอัป กรุณาอนุญาต pop-up แล้วลองใหม่");
+        return;
+      }
+      printWindow.document.open();
+      printWindow.document.write(receiptHtml);
+      printWindow.document.close();
+    }
+
+    function applyFilters() {
+      const range = getSelectedRange();
+      const scopeCards = cards.filter((card) => {
+        const matchesOutlet = outletFilter.value === "all" || (card.outlet || "") === outletFilter.value;
+        const matchesGroup = groupFilter.value === "all" || (card.card_group || "") === groupFilter.value;
+        return matchesOutlet && matchesGroup;
+      });
+
+      const snapshotCards = scopeCards
+        .filter((card) => statusFilter.value === "all" || (card.status || "") === statusFilter.value)
+        .sort((a, b) => {
+          const aDate = toDate(a.redeemed_at) || toDate(a.created_at) || new Date(0);
+          const bDate = toDate(b.redeemed_at) || toDate(b.created_at) || new Date(0);
+          return bDate.getTime() - aDate.getTime();
+        });
+
+      const scopeCodes = new Set(scopeCards.map((card) => card.voucher_code || ""));
+      const scopeLogs = logs.filter((log) => scopeCodes.has(log.voucher_code || ""));
+      const periodLogs = scopeLogs.filter((log) => {
+        if (!range.start && !range.end) return true;
+        return inRange(log.action_at, range);
+      }).sort((a, b) => (toDate(b.action_at)?.getTime() || 0) - (toDate(a.action_at)?.getTime() || 0));
+
+      const todayRange = getTodayRange();
+      const sevenDayRange = getSevenDayRange();
+      const thirtyDayRange = getThirtyDayRange();
+
+      const todayRedeemed = scopeLogs.filter((log) => log.action === "redeemed" && inRange(log.action_at, todayRange)).length;
+      const todayReused = scopeLogs.filter((log) => log.action === "reused" && inRange(log.action_at, todayRange)).length;
+      const sevenDayRedeemed = scopeLogs.filter((log) => log.action === "redeemed" && inRange(log.action_at, sevenDayRange)).length;
+      const thirtyDayRedeemed = scopeLogs.filter((log) => log.action === "redeemed" && inRange(log.action_at, thirtyDayRange)).length;
+      const awaitingReturn = scopeCards.filter((card) => card.status === "redeemed").sort((a, b) => (toDate(a.redeemed_at)?.getTime() || 0) - (toDate(b.redeemed_at)?.getTime() || 0));
+
+      const stockByOutlet = buildCountsByOutlet(scopeCards);
+      const redeemByOutlet = buildActionSummaryByOutlet(periodLogs);
+      const redeemByStaff = buildRedeemByStaff(periodLogs);
+      const topCards = buildTopCards(periodLogs);
+      const recentActivity = periodLogs.slice(0, 100);
+      const trendRows = buildTrendRows(scopeLogs);
+
+      dashboardState = { scopeCards, snapshotCards, scopeLogs, periodLogs, stockByOutlet, redeemByOutlet, redeemByStaff, topCards, awaitingReturn, recentActivity, trendRows, rangeLabel: range.label };
+
+      todayRedeemedCount.textContent = String(todayRedeemed);
+      todayReusedCount.textContent = String(todayReused);
+      availableNowCount.textContent = String(scopeCards.filter((card) => card.status === "issued").length);
+      usedNowCount.textContent = String(scopeCards.filter((card) => card.status === "redeemed").length);
+      disabledNowCount.textContent = String(scopeCards.filter((card) => card.status === "disabled").length);
+      awaitingReturnCount.textContent = String(awaitingReturn.length);
+      sevenDayRedeemedCount.textContent = String(sevenDayRedeemed);
+      thirtyDayRedeemedCount.textContent = String(thirtyDayRedeemed);
+
+      periodLabelOutlet.textContent = `(${range.label})`;
+      periodLabelStaff.textContent = `(${range.label})`;
+      periodLabelTopCards.textContent = `(${range.label})`;
+      periodLabelActivity.textContent = `(${range.label})`;
+      setMetaChips(range.label, scopeCards, periodLogs);
+
+      renderTableRows(stockOutletBody, stockByOutlet.map((row) => `
+        <tr><td>${row.outlet}</td><td>${row.total}</td><td>${row.issued}</td><td>${row.redeemed}</td><td>${row.disabled}</td></tr>
+      `).join(""), 5);
+
+      renderTableRows(redeemOutletBody, redeemByOutlet.map((row) => `
+        <tr><td>${row.outlet}</td><td>${row.redeemed}</td><td>${row.reused}</td><td>${row.disabled}</td><td>${row.enabled}</td></tr>
+      `).join(""), 5, "ไม่พบ activity ในช่วงเวลาที่เลือก");
+
+      renderTableRows(staffBody, redeemByStaff.map((row) => `
+        <tr><td>${row.staff}</td><td>${row.role}</td><td>${row.redeemed}</td><td>${row.reused}</td></tr>
+      `).join(""), 4, "ไม่พบ activity ในช่วงเวลาที่เลือก");
+
+      renderTrend(trendRows);
+
+      renderTableRows(topCardsBody, topCards.map((row) => `
+        <tr><td>${row.card_label}</td><td>${row.voucher_code}</td><td>${row.outlet}</td><td>${row.redeemed}</td></tr>
+      `).join(""), 4, "ยังไม่มีการ์ดที่ถูกใช้ในช่วงเวลาที่เลือก");
+
+      renderTableRows(awaitingBody, awaitingReturn.slice(0, 50).map((card) => `
+        <tr><td>${card.card_label || "-"}</td><td>${card.voucher_code || "-"}</td><td>${card.outlet || "-"}</td><td>${fmtDateTime(card.redeemed_at)}</td><td>${hoursSince(card.redeemed_at)}</td></tr>
+      `).join(""), 5, "ไม่มีการ์ดค้างรอคืน");
+
+      renderTableRows(activityBody, recentActivity.map((log) => `
+        <tr>
+          <td>${fmtDateTime(log.action_at)}</td>
+          <td><span class="status-pill status-${log.action || "issued"}">${actionLabel(log.action)}</span></td>
+          <td>${log.card_label || "-"}</td>
+          <td>${log.voucher_code || "-"}</td>
+          <td>${log.card_outlet || log.outlet || "-"}</td>
+          <td>${log.action_by_name || log.action_by_uid || "-"}</td>
+          <td>${log.note || "-"}</td>
+        </tr>
+      `).join(""), 7, "ไม่พบ activity ในช่วงเวลาที่เลือก");
+
+      renderTableRows(snapshotBody, snapshotCards.slice(0, 150).map((card) => `
+        <tr>
+          <td>${card.card_label || "-"}</td>
+          <td>${card.voucher_code || "-"}</td>
+          <td>${card.card_group || "-"}</td>
+          <td>${card.outlet || "-"}</td>
+          <td><span class="status-pill status-${card.status || "issued"}">${statusLabel(card.status)}</span></td>
+          <td>${fmtDateTime(card.redeemed_at)}</td>
+          <td>${card.reset_count || 0}</td>
+        </tr>
+      `).join(""), 7, "ไม่พบการ์ดตามเงื่อนไข");
+    }
+
+    function exportXlsx() {
+      const wb = XLSX.utils.book_new();
+      const summaryRows = [
+        { Metric: "Today Redeemed", Value: todayRedeemedCount.textContent },
+        { Metric: "Today Reused", Value: todayReusedCount.textContent },
+        { Metric: "Available Now", Value: availableNowCount.textContent },
+        { Metric: "Used Now", Value: usedNowCount.textContent },
+        { Metric: "Disabled Now", Value: disabledNowCount.textContent },
+        { Metric: "Awaiting Return", Value: awaitingReturnCount.textContent },
+        { Metric: "7-Day Redeemed", Value: sevenDayRedeemedCount.textContent },
+        { Metric: "30-Day Redeemed", Value: thirtyDayRedeemedCount.textContent },
+        { Metric: "Activity Period", Value: dashboardState.rangeLabel },
+        { Metric: "Outlet Filter", Value: outletFilter.value === "all" ? "All" : outletFilter.value },
+        { Metric: "Card Group Filter", Value: groupFilter.value === "all" ? "All" : groupFilter.value },
+        { Metric: "Snapshot Status Filter", Value: statusFilter.value === "all" ? "All" : statusLabel(statusFilter.value) }
+      ];
+
+      const stockRows = dashboardState.stockByOutlet.map((row) => ({
+        Outlet: row.outlet,
+        Total: row.total,
+        Available: row.issued,
+        Used: row.redeemed,
+        Disabled: row.disabled
+      }));
+
+      const outletRows = dashboardState.redeemByOutlet.map((row) => ({
+        Outlet: row.outlet,
+        Redeemed: row.redeemed,
+        Reused: row.reused,
+        Disabled: row.disabled,
+        Enabled: row.enabled
+      }));
+
+      const staffRows = dashboardState.redeemByStaff.map((row) => ({
+        Staff: row.staff,
+        Role: row.role,
+        Redeemed: row.redeemed,
+        Reused: row.reused
+      }));
+
+      const topCardRows = dashboardState.topCards.map((row) => ({
+        CardLabel: row.card_label,
+        VoucherCode: row.voucher_code,
+        Outlet: row.outlet,
+        Redeemed: row.redeemed
+      }));
+
+      const awaitingRows = dashboardState.awaitingReturn.map((card) => ({
+        CardLabel: card.card_label || "",
+        VoucherCode: card.voucher_code || "",
+        Outlet: card.outlet || "",
+        RedeemedAt: fmtDateTime(card.redeemed_at),
+        Waiting: hoursSince(card.redeemed_at)
+      }));
+
+      const activityRows = dashboardState.recentActivity.map((log) => ({
+        ActionAt: fmtDateTime(log.action_at),
+        Action: actionLabel(log.action),
+        CardLabel: log.card_label || "",
+        VoucherCode: log.voucher_code || "",
+        Outlet: log.card_outlet || log.outlet || "",
+        By: log.action_by_name || log.action_by_uid || "",
+        Role: log.action_by_role || "",
+        Note: log.note || ""
+      }));
+
+      const snapshotRows = dashboardState.snapshotCards.map((card) => ({
+        CardLabel: card.card_label || "",
+        VoucherCode: card.voucher_code || "",
+        CardGroup: card.card_group || "",
+        Department: card.department || "",
+        Outlet: card.outlet || "",
+        Status: statusLabel(card.status),
+        RedeemedAt: fmtDateTime(card.redeemed_at),
+        ResetCount: card.reset_count || 0,
+        LastResetAt: fmtDateTime(card.last_reset_at),
+        LastResetBy: card.last_reset_by_name || card.last_reset_by_uid || "",
+        CreatedAt: fmtDateTime(card.created_at)
+      }));
+
+      const trendRows = dashboardState.trendRows.map((row) => ({ Day: row.label, Redeemed: row.count }));
+
+      const sheets = [
+        ["Summary", summaryRows],
+        ["StockByOutlet", stockRows],
+        ["RedeemByOutlet", outletRows],
+        ["RedeemByStaff", staffRows],
+        ["TopUsedCards", topCardRows],
+        ["AwaitingReturn", awaitingRows],
+        ["ActivityLog", activityRows],
+        ["Snapshot", snapshotRows],
+        ["Trend7Day", trendRows]
+      ];
+
+      sheets.forEach(([name, rows]) => {
+        const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Note: "No data" }]);
+        XLSX.utils.book_append_sheet(wb, ws, name);
+      });
+
+      XLSX.writeFile(wb, "laya_voucher_dashboard_v5_1.xlsx");
+    }
+
+    periodPreset.addEventListener("change", updateDateInputsState);
+    applyBtn.addEventListener("click", applyFilters);
+    resetBtn.addEventListener("click", () => {
+      periodPreset.value = "today";
+      outletFilter.value = "all";
+      groupFilter.value = "all";
+      statusFilter.value = "all";
+      updateDateInputsState();
+      applyFilters();
     });
-  }
+    exportBtn.addEventListener("click", exportXlsx);
+    posPrintBtn.addEventListener("click", openPosPrintView);
 
-  document.getElementById('applyBtn').addEventListener('click', render);
-  document.getElementById('resetBtn').addEventListener('click', () => { fromDateEl.value = today; toDateEl.value = today; outletEl.value = ''; render(); });
-  document.getElementById('xlsxBtn').addEventListener('click', exportDashboardXlsx);
-  document.getElementById('pdfBtn').addEventListener('click', exportDashboardPdf);
-  await render();
-</script>
+    await loadData();
+  </script>
 </body>
 </html>

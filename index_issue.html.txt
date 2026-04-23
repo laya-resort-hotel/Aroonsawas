@@ -1,0 +1,1 @@
+ไฟล์ระบบจริงหน้า Issue ถูกแทนด้วย search/redeem/detail starter ในชุดนี้ เพื่อใช้เป็นโครงอัป GitHub ก่อน

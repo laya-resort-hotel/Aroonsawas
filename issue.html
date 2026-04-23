@@ -26,7 +26,7 @@
         <div>
           <span class="soft-badge">Card Setup</span>
           <h1>Add Reusable Card</h1>
-          <p class="page-subtitle">สร้างการ์ด Voucher แบบถาวรสำหรับแจกแขกหน้างาน โดย QR บนการ์ดจะเป็น Voucher Code ถาวรที่สามารถ Reuse ได้หลังรับการ์ดคืน</p>
+          <p class="page-subtitle">สร้างการ์ด Voucher แบบถาวรสำหรับแจกแขกหน้างาน โดยเลือกแพ็กเกจ 500→600 หรือ 1,000→1,200 เพื่อให้หน้า Print แสดงด้านหน้าและด้านหลังถูกต้องอัตโนมัติ</p>
         </div>
       </div>
     </section>
@@ -37,15 +37,17 @@
         <p class="page-subtitle">กรอกข้อมูลการ์ด จากนั้นกด Generate เพื่อดู QR ก่อนสร้างจริง</p>
         <div class="issue-form-grid-v5">
           <input id="cardLabel" placeholder="Card Label เช่น CARD-001" />
-          <input id="cardGroup" placeholder="Card Group เช่น STARBUCKS" value="STARBUCKS" />
-          <input id="outlet" placeholder="Outlet" value="Aroonsawat" />
-          <select id="pricePlan">
+          <select id="packagePlan">
             <option value="500_600">Buy THB 500 = THB 600</option>
             <option value="1000_1200">Buy THB 1,000 = THB 1,200</option>
           </select>
-          <input id="displayNo" placeholder="Display No (optional)" />
+          <input id="cardGroup" placeholder="Card Group เช่น STARBUCKS" value="STARBUCKS" />
+          <input id="outlet" placeholder="Outlet" value="Aroonsawat" />
+          <input id="displayNo" class="full" placeholder="Display No (optional)" />
           <textarea id="note" class="full" placeholder="หมายเหตุเพิ่มเติม (optional)"></textarea>
         </div>
+        <div style="height:14px"></div>
+        <div class="hint-box">แพ็กเกจที่เลือกจะถูกบันทึกลง Firestore และใช้สร้างด้านหลังการ์ดอัตโนมัติในหน้า Print Voucher</div>
         <div style="height:14px"></div>
         <div class="button-row">
           <button id="generateBtn" type="button">Generate QR &amp; Code</button>
@@ -62,9 +64,10 @@
             <div>
               <p><strong>Card Label:</strong> <span id="previewCardLabel">-</span></p>
               <p><strong>Voucher Code:</strong> <span id="previewVoucherCode">-</span></p>
+              <p><strong>Package:</strong> <span id="previewPackage">-</span></p>
+              <p><strong>Voucher Value:</strong> <span id="previewValue">-</span></p>
               <p><strong>Card Group:</strong> <span id="previewGroup">-</span></p>
               <p><strong>Outlet:</strong> <span id="previewOutlet">-</span></p>
-              <p><strong>Package:</strong> <span id="previewPackage">-</span></p>
               <p><strong>Department:</strong> <span id="previewDept">-</span></p>
             </div>
           </div>
@@ -80,17 +83,15 @@
   <script type="module">
     import { db } from "./firebase-config.js";
     import { requireRole, renderNav } from "./auth-guard.js";
-    import {
-      collection, addDoc, serverTimestamp, query, where, getDocs, doc, runTransaction
-    } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+    import { collection, addDoc, serverTimestamp, query, where, getDocs, doc, runTransaction } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 
     const { user, profile } = await requireRole(["supervisor", "manager", "admin"]);
     renderNav(profile);
 
     const cardLabelEl = document.getElementById("cardLabel");
+    const packagePlanEl = document.getElementById("packagePlan");
     const cardGroupEl = document.getElementById("cardGroup");
     const outletEl = document.getElementById("outlet");
-    const pricePlanEl = document.getElementById("pricePlan");
     const displayNoEl = document.getElementById("displayNo");
     const noteEl = document.getElementById("note");
     const previewSection = document.getElementById("previewSection");
@@ -101,6 +102,13 @@
 
     let pendingCard = null;
     const effectiveDepartment = (profile.department || "").trim() || "FB";
+
+    function getPlan(plan) {
+      if (plan === "1000_1200") {
+        return { packagePlan: "1000_1200", purchaseAmount: 1000, voucherValue: 1200, label: "Buy THB 1,000 = THB 1,200" };
+      }
+      return { packagePlan: "500_600", purchaseAmount: 500, voucherValue: 600, label: "Buy THB 500 = THB 600" };
+    }
 
     function getYearMonth() {
       const now = new Date();
@@ -159,9 +167,10 @@
       previewSection.classList.remove("hidden");
       document.getElementById("previewCardLabel").textContent = data.cardLabel;
       document.getElementById("previewVoucherCode").textContent = data.voucherCode;
+      document.getElementById("previewPackage").textContent = data.pricePlanLabel;
+      document.getElementById("previewValue").textContent = `THB ${data.voucherValue.toLocaleString("en-US")}`;
       document.getElementById("previewGroup").textContent = data.cardGroup;
       document.getElementById("previewOutlet").textContent = data.outlet;
-      document.getElementById("previewPackage").textContent = `Buy THB ${data.purchaseAmount.toLocaleString()} = THB ${data.redeemValue.toLocaleString()}`;
       document.getElementById("previewDept").textContent = data.department;
       renderQr(data.voucherCode);
       createBtn.disabled = false;
@@ -173,8 +182,9 @@
         <h3>Card created successfully</h3>
         <p><strong>Card Label:</strong> ${saved.card_label}</p>
         <p><strong>Voucher Code:</strong> ${saved.voucher_code}</p>
+        <p><strong>Package:</strong> ${saved.price_plan_label || "-"}</p>
+        <p><strong>Voucher Value:</strong> THB ${(saved.voucher_value || 0).toLocaleString("en-US")}</p>
         <p><strong>Outlet:</strong> ${saved.outlet}</p>
-        <p><strong>Package:</strong> Buy THB ${Number(saved.purchase_amount || 0).toLocaleString()} = THB ${Number(saved.voucher_value || 0).toLocaleString()}</p>
         <div class="button-row" style="margin-top:12px;">
           <button type="button" id="openDetailBtn">Open Detail</button>
           <button type="button" id="openViewBtn" class="button-secondary">Open QR &amp; Code</button>
@@ -200,11 +210,9 @@
         const cardLabel = cardLabelEl.value.trim();
         const cardGroup = cardGroupEl.value.trim() || "STARBUCKS";
         const outlet = outletEl.value.trim() || "Aroonsawat";
-        const planValue = (pricePlanEl.value || "500_600").split("_");
-        const purchaseAmount = Number(planValue[0] || 500);
-        const redeemValue = Number(planValue[1] || 600);
         const displayNo = displayNoEl.value.trim();
         const note = noteEl.value.trim();
+        const plan = getPlan(packagePlanEl.value);
 
         if (!cardLabel) throw new Error("กรุณากรอก Card Label");
         if (await isCardLabelTaken(cardLabel)) throw new Error("Card Label นี้ถูกใช้แล้ว");
@@ -215,12 +223,13 @@
           cardLabel,
           cardGroup,
           outlet,
-          purchaseAmount,
-          redeemValue,
-          pricePlan: `${purchaseAmount}_${redeemValue}`,
           note,
           voucherCode: await generateUniqueVoucherCode(),
-          department: effectiveDepartment
+          department: effectiveDepartment,
+          packagePlan: plan.packagePlan,
+          purchaseAmount: plan.purchaseAmount,
+          voucherValue: plan.voucherValue,
+          pricePlanLabel: plan.label
         };
 
         renderPreview(pendingCard);
@@ -246,9 +255,6 @@
           voucher_mode: "reusable_card",
           department: pendingCard.department,
           outlet: pendingCard.outlet,
-          purchase_amount: pendingCard.purchaseAmount,
-          voucher_value: pendingCard.redeemValue,
-          price_plan: pendingCard.pricePlan,
           status: "issued",
           reset_count: 0,
           last_reset_at: null,
@@ -256,13 +262,18 @@
           last_reset_by_name: "",
           disabled_reason: "",
           template_type: "reusable_card",
-          voucher_title_small: `BUY THB ${pendingCard.purchaseAmount.toLocaleString()}`,
-          voucher_title_big: `VALUE THB ${pendingCard.redeemValue.toLocaleString()}`,
-          voucher_description: `Present this physical card to outlet staff before ordering. Buy THB ${pendingCard.purchaseAmount.toLocaleString()} = THB ${pendingCard.redeemValue.toLocaleString()}.`,
+          voucher_title_small: "SALE CARD",
+          voucher_title_big: `THB ${pendingCard.purchaseAmount.toLocaleString("en-US")}`,
+          voucher_description: `Buy THB ${pendingCard.purchaseAmount.toLocaleString("en-US")} = THB ${pendingCard.voucherValue.toLocaleString("en-US")}`,
           validity_mode: "until_reused",
           validity_label: "Reusable Card",
           validity_days: null,
           expiry_date: null,
+          package_plan: pendingCard.packagePlan,
+          price_plan: pendingCard.packagePlan,
+          price_plan_label: pendingCard.pricePlanLabel,
+          purchase_amount: pendingCard.purchaseAmount,
+          voucher_value: pendingCard.voucherValue,
           name: "",
           phone: "",
           room: "",
@@ -272,7 +283,7 @@
           issued_by_role: profile.role,
           created_at: serverTimestamp(),
           updated_at: serverTimestamp(),
-          policy_version: "v5"
+          policy_version: "v6"
         };
 
         await addDoc(collection(db, "vouchers"), payload);
@@ -286,7 +297,7 @@
           action_by_uid: user.uid,
           action_by_name: profile.name || profile.employee_id || "",
           action_by_role: profile.role,
-          note: `Reusable card created / ${payload.card_label}`
+          note: `Reusable card created / ${payload.card_label} / ${payload.price_plan_label}`
         });
         renderResultSuccess(payload);
       } catch (err) {

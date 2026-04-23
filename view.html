@@ -3,761 +3,283 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Voucher Slides</title>
-  <link rel="stylesheet" href="style.css">
+  <title>Print Voucher</title>
   <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"></script>
   <style>
     :root {
-      --forest:#006241;
-      --forest-2:#1e3932;
-      --forest-3:#14543f;
-      --cream:#f7f4ed;
-      --cream-2:#ece6d8;
-      --paper:#fffdf8;
-      --gold:#d4bf8a;
-      --gold-soft:#efe2b7;
-      --ink:#213038;
-      --muted:#6f7b82;
-      --line:rgba(18,57,47,.14);
-      --shadow:0 28px 70px rgba(14, 28, 24, 0.18);
+      --page-bg:
+        radial-gradient(circle at top left, rgba(0,98,65,.10), transparent 26%),
+        radial-gradient(circle at top right, rgba(30,57,50,.08), transparent 24%),
+        linear-gradient(180deg, #f6f4ef 0%, #ebe7de 100%);
+      --ink:#1f2c27;
+      --muted:#617069;
+      --forest:#123930;
+      --border:#6b6b6b;
+      --card-bg:#ececec;
+      --shadow:0 16px 36px rgba(0,0,0,.12);
     }
     * { box-sizing:border-box; }
-    body.voucher-slider-page {
-      min-height:100vh;
+    body {
       margin:0;
+      font-family: Inter, Arial, Helvetica, sans-serif;
+      background:var(--page-bg);
       color:var(--ink);
-      background:
-        radial-gradient(circle at top left, rgba(198,165,108,.16), transparent 30%),
-        radial-gradient(circle at bottom right, rgba(18,57,47,.20), transparent 34%),
-        linear-gradient(180deg, #eef2ef 0%, #e6ebe7 100%);
     }
-    .voucher-view-shell {
-      max-width: 980px;
+    .page {
+      max-width: 1280px;
       margin: 0 auto;
-      padding: 24px 16px 34px;
+      padding: 26px 18px 36px;
     }
-    .viewer-toolbar {
+    .toolbar {
       display:flex;
       justify-content:space-between;
       align-items:flex-start;
       gap:16px;
       flex-wrap:wrap;
-      margin-bottom:16px;
+      margin-bottom:18px;
     }
-    .viewer-toolbar .left {
-      display:flex;
-      flex-direction:column;
-      gap:6px;
-    }
-    .viewer-toolbar .actions {
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-    }
-    .viewer-toolbar button, .viewer-toolbar a {
-      appearance:none;
-      border:none;
-      padding:12px 16px;
-      border-radius:14px;
-      background:rgba(255,255,255,.9);
-      color:var(--ink);
-      box-shadow:0 12px 28px rgba(16, 26, 22, 0.08);
-      border:1px solid rgba(18,57,47,.10);
-      text-decoration:none;
-      font-weight:800;
-      cursor:pointer;
-    }
-    .viewer-toolbar .primary {
-      background:linear-gradient(135deg, var(--forest), var(--forest-3));
-      color:#fff;
-    }
-    .viewer-title {
-      margin:0;
-      font-size: clamp(1.9rem, 4vw, 2.7rem);
+    .title-wrap h1 {
+      margin:0 0 6px;
+      font-size: clamp(2rem, 3.8vw, 3rem);
       line-height:1.02;
       letter-spacing:-.03em;
     }
-    .viewer-subtitle {
+    .title-wrap p {
       margin:0;
       color:var(--muted);
-      font-size:.98rem;
+      font-size:1rem;
     }
-    .soft-badge {
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      width:max-content;
-      min-height:34px;
-      padding:8px 12px;
-      border-radius:999px;
-      background:rgba(18,57,47,.08);
-      color:var(--forest-3);
-      border:1px solid rgba(18,57,47,.08);
-      font-size:.8rem;
+    .actions {
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+    .actions button,
+    .actions a {
+      border:none;
+      text-decoration:none;
+      background:#fff;
+      color:var(--ink);
+      padding:14px 18px;
+      border-radius:16px;
+      font-weight:800;
+      box-shadow:0 10px 24px rgba(0,0,0,.08);
+      cursor:pointer;
+      border:1px solid rgba(0,0,0,.08);
+    }
+    .actions .primary {
+      background:linear-gradient(135deg, #0c6a47, #154636);
+      color:#fff;
+    }
+    .hero-card {
+      background:rgba(255,255,255,.86);
+      border:1px solid rgba(0,0,0,.06);
+      border-radius:26px;
+      padding:20px 24px;
+      box-shadow:0 14px 34px rgba(0,0,0,.07);
+      margin-bottom:18px;
+    }
+    .hero-card p {
+      margin:8px 0 0;
+      color:var(--muted);
+      font-size:1.05rem;
+    }
+    .hero-card .code-line {
       font-weight:900;
-      letter-spacing:.04em;
-      text-transform:uppercase;
+      color:#1a382f;
     }
-    .slider-shell { overflow:hidden; }
-    .slider-track {
-      display:flex;
-      transition: transform .35s ease;
+    .preview-grid {
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0,1fr));
+      gap:18px;
+      align-items:start;
     }
-    .slide {
-      min-width:100%;
+    .panel {
       display:flex;
-      justify-content:center;
-      padding:8px 0 2px;
-    }
-    .voucher-stage {
-      width:100%;
-      display:flex;
-      justify-content:center;
+      flex-direction:column;
+      gap:10px;
       align-items:center;
-      padding:6px 0 10px;
     }
-    .coupon-card {
-      width:min(100%, 680px);
-      min-height:372px;
-      border-radius:28px;
+    .panel-label {
+      font-size:1.6rem;
+      letter-spacing:.18em;
+      font-weight:900;
+      color:#5f7269;
+    }
+    .voucher-card {
+      width:min(100%, 760px);
+      aspect-ratio: 85 / 54;
+      border-radius:30px;
       overflow:hidden;
       position:relative;
       box-shadow:var(--shadow);
-      border:1px solid rgba(18,57,47,.12);
-      isolation:isolate;
     }
-    .coupon-card::before {
-      content:"";
-      position:absolute;
-      inset:0;
-      pointer-events:none;
-      z-index:5;
-      background:
-        radial-gradient(circle at 0 50%, #e0e5e4 0 13px, transparent 14px),
-        radial-gradient(circle at 100% 50%, #e0e5e4 0 13px, transparent 14px);
+    .front-card {
+      background-position:center;
       background-repeat:no-repeat;
-      background-position:left center,right center;
+      background-size:cover;
     }
-    .coupon-card::after {
-      content:"";
+    .front-badge {
       position:absolute;
-      inset:0;
-      pointer-events:none;
-      z-index:4;
-      background:
-        linear-gradient(115deg, rgba(255,255,255,.22), transparent 22%, transparent 78%, rgba(255,255,255,.12));
-      mix-blend-mode:screen;
-      opacity:.9;
-    }
-    .coupon-front,
-    .coupon-back {
-      display:grid;
-      grid-template-columns: 1.28fr .72fr;
-      background:linear-gradient(135deg, #fbf8f1 0%, #efe9dc 100%);
-    }
-    .panel-main,
-    .panel-side {
-      position:relative;
-      padding:24px 26px;
+      right:20px;
+      bottom:18px;
+      min-width:168px;
+      padding:12px 22px 10px;
+      border-radius:999px;
+      background:rgba(255,255,255,.96);
+      color:#193026;
+      box-shadow:0 8px 24px rgba(0,0,0,.12);
+      text-align:center;
       z-index:2;
     }
-    .panel-main {
-      background:
-        linear-gradient(145deg, rgba(255,255,255,.74), rgba(255,255,255,.35)),
-        repeating-linear-gradient(0deg, rgba(110,95,70,.018), rgba(110,95,70,.018) 2px, transparent 2px, transparent 8px),
-        linear-gradient(135deg, var(--paper), var(--cream));
-    }
-    .panel-main::before {
-      content:"";
-      position:absolute;
-      inset:12px;
-      border-radius:20px;
-      border:1px solid rgba(198,165,108,.30);
-      pointer-events:none;
-    }
-    .panel-side {
-      color:#fff;
-      border-left:1px dashed rgba(198,165,108,.38);
-      background:
-        radial-gradient(circle at top right, rgba(255,255,255,.12), transparent 28%),
-        radial-gradient(circle at bottom left, rgba(255,255,255,.08), transparent 24%),
-        repeating-linear-gradient(135deg, rgba(255,255,255,.025) 0 14px, rgba(255,255,255,.01) 14px 28px),
-        linear-gradient(165deg, #006241 0%, #1e3932 100%);
-    }
-    .panel-side::before {
-      content:"";
-      position:absolute;
-      inset:14px;
-      border:1px solid rgba(198,165,108,.28);
-      border-radius:20px;
-      pointer-events:none;
-    }
-    .foil-line {
-      width:92px;
-      height:4px;
-      border-radius:999px;
-      margin:0 0 12px;
-      background:linear-gradient(90deg, rgba(198,165,108,.2), var(--gold), rgba(198,165,108,.18));
-      box-shadow:0 0 14px rgba(198,165,108,.24);
-    }
-    .mini-status {
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      min-height:34px;
-      padding:8px 12px;
-      border-radius:999px;
-      font-size:.76rem;
-      font-weight:900;
-      letter-spacing:.08em;
-      text-transform:uppercase;
-      width:max-content;
-      margin-bottom:14px;
-      color:var(--forest);
-      background:rgba(18,57,47,.08);
-      border:1px solid rgba(18,57,47,.08);
-    }
-    .mini-status.redeemed { background:#e8f5ea; color:#1b6f3d; }
-    .mini-status.cancelled { background:#fff1f0; color:#c0392b; }
-    .mini-status.expired { background:#fff4df; color:#a66a00; }
-    .collection-label {
+    .front-badge .amount {
       display:block;
-      margin-bottom:8px;
-      color:#8a6d3f;
-      font-size:.82rem;
+      font-size:1.1rem;
+      line-height:1;
       font-weight:900;
-      letter-spacing:.22em;
-      text-transform:uppercase;
+      letter-spacing:.03em;
     }
-    .hero-title {
-      margin:0;
-      font-size: clamp(2.6rem, 6vw, 4.1rem);
-      line-height:.88;
-      letter-spacing:-.05em;
-      color:#19272d;
-    }
-    .hero-title span {
-      display:block;
-      font-size:clamp(.95rem, 2vw, 1.18rem);
-      letter-spacing:.22em;
-      text-transform:uppercase;
-      color:var(--forest-3);
-      margin-bottom:12px;
-    }
-    .coupon-copy {
-      margin:14px 0 0;
-      font-size:1.02rem;
-      line-height:1.65;
-      color:#3b4c56;
-      max-width:94%;
-    }
-    .coupon-copy strong { color:var(--forest); }
-    .coupon-note {
-      margin-top:13px;
-      color:#7a6a51;
-      font-size:.88rem;
-      line-height:1.55;
-      max-width:88%;
-    }
-    .seal-badge {
-      position:absolute;
-      right:28px;
-      top:26px;
-      width:86px;
-      height:86px;
-      border-radius:999px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      text-align:center;
-      padding:12px;
-      color:#87683a;
-      font-size:.68rem;
-      font-weight:900;
-      line-height:1.35;
-      letter-spacing:.08em;
-      text-transform:uppercase;
-      background:
-        radial-gradient(circle, rgba(255,255,255,.85) 0%, rgba(244,231,202,.78) 60%, rgba(219,194,144,.9) 100%);
-      border:1px solid rgba(198,165,108,.55);
-      box-shadow:0 10px 22px rgba(122, 90, 38, 0.14), inset 0 0 0 8px rgba(255,255,255,.34);
-    }
-    .seal-badge::before {
-      content:"✦";
-      position:absolute;
-      top:12px;
-      left:50%;
-      transform:translateX(-50%);
-      font-size:1rem;
-      color:#9b7845;
-    }
-    .coupon-meta {
-      display:flex;
-      flex-wrap:wrap;
-      gap:10px;
-      margin-top:24px;
-      align-items:center;
-    }
-    .pill-box,
-    .serial-box {
-      display:inline-flex;
-      align-items:center;
-      min-height:46px;
-      border-radius:15px;
-      padding:11px 14px;
-      background:rgba(255,255,255,.74);
-      border:1px solid rgba(18,57,47,.12);
-      box-shadow:0 10px 20px rgba(19, 27, 23, 0.05);
-      color:#20343c;
-      font-weight:800;
-    }
-    .pill-box {
-      font-size:.94rem;
-      letter-spacing:.04em;
-    }
-    .serial-box {
-      width:100%;
-      max-width:310px;
-      justify-content:space-between;
-      font-size:.9rem;
-      text-transform:uppercase;
-      letter-spacing:.04em;
-    }
-    .serial-box span:first-child { color:#7c6b50; font-size:.74rem; font-weight:900; }
-    .serial-box-wide { max-width:350px; }
-    .brand-side-top {
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-      margin-bottom:14px;
-    }
-    .brand-chip {
-      display:inline-flex;
-      align-items:center;
-      min-height:30px;
-      padding:7px 10px;
-      border-radius:999px;
-      background:rgba(255,255,255,.10);
-      border:1px solid rgba(233,213,173,.24);
-      color:#f3e7cc;
-      font-size:.72rem;
-      font-weight:800;
-      letter-spacing:.12em;
-      text-transform:uppercase;
-    }
-    .brand-medallion {
-      width:118px;
-      height:118px;
-      border-radius:999px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      background:linear-gradient(145deg, rgba(255,255,255,.98), rgba(245,233,204,.92));
-      border:1px solid rgba(233,213,173,.60);
-      box-shadow:0 12px 22px rgba(0,0,0,.16), inset 0 0 0 10px rgba(24,80,65,.06);
-      margin:2px auto 16px;
-      padding:12px;
-    }
-    .brand-medallion img {
-      width:100%;
-      height:100%;
-      object-fit:contain;
-      filter:saturate(.96) contrast(1.04);
-    }
-    .brand-divider {
-      width:72px;
-      height:2px;
-      margin:0 auto 14px;
-      border-radius:999px;
-      background:linear-gradient(90deg, rgba(233,213,173,.1), rgba(233,213,173,.9), rgba(233,213,173,.1));
-      box-shadow:0 0 14px rgba(233,213,173,.15);
-    }
-    .side-note {
-      margin-top:12px;
-      text-align:center;
-      color:rgba(255,248,235,.72);
-      font-size:.8rem;
-      line-height:1.5;
-    }
-    .side-heading {
-      text-align:center;
-      margin:0 0 12px;
-      color:#fff7e8;
-      font-size:1rem;
-      font-weight:800;
-      letter-spacing:.06em;
-    }
-    .side-heading small {
+    .front-badge .sub {
       display:block;
       margin-top:4px;
-      color:rgba(255,245,228,.72);
       font-size:.72rem;
-      letter-spacing:.16em;
-      text-transform:uppercase;
-    }
-    .qr-box,
-    .auth-card,
-    .summary-card {
-      border-radius:20px;
-      border:1px solid rgba(233,213,173,.22);
-      background:rgba(255,255,255,.08);
-      backdrop-filter:blur(10px);
-      box-shadow:0 10px 22px rgba(0,0,0,.12);
-    }
-    .qr-box {
-      padding:18px 16px;
-      display:flex;
-      flex-direction:column;
-      align-items:center;
-      gap:10px;
-    }
-    .qr-box #qrcode {
-      background:#fff;
-      padding:10px;
-      border-radius:16px;
-      box-shadow:0 8px 18px rgba(0,0,0,.14);
-    }
-    .qr-caption {
-      text-align:center;
-      color:rgba(255,248,235,.78);
-      font-size:.82rem;
-      line-height:1.5;
-      max-width:208px;
-    }
-    .back-label {
-      display:inline-block;
-      color:#8a6d3f;
-      font-size:.78rem;
+      letter-spacing:.18em;
       font-weight:900;
-      letter-spacing:.20em;
-      text-transform:uppercase;
-      margin-bottom:10px;
+      color:#6b6b6b;
     }
+    .back-card {
+      background:#efefef;
+      border:5px solid var(--border);
+      padding:24px 26px 20px;
+      display:grid;
+      grid-template-columns: 1fr 240px;
+      gap:22px;
+    }
+    .back-left { min-width:0; }
     .back-title {
-      margin:0;
-      font-size:1.7rem;
-      line-height:1.05;
-      letter-spacing:-.03em;
-      color:#1d2c34;
-    }
-    .back-sub {
-      margin:8px 0 16px;
-      color:#687680;
-      font-size:.94rem;
-      line-height:1.55;
-    }
-    .detail-list {
-      display:grid;
-      gap:10px;
-      margin-bottom:14px;
-    }
-    .detail-row {
-      display:grid;
-      grid-template-columns: 104px 1fr;
-      gap:12px;
-      padding:10px 0;
-      border-bottom:1px dashed rgba(18,57,47,.14);
-    }
-    .detail-label {
-      color:#8b6b3b;
-      font-size:.76rem;
+      margin:8px 0 18px;
+      font-size:1.95rem;
       font-weight:900;
-      letter-spacing:.12em;
-      text-transform:uppercase;
-      padding-top:4px;
-    }
-    .detail-value {
-      color:#33454f;
-      font-size:.95rem;
-      line-height:1.55;
-      min-height:24px;
-      word-break:break-word;
-    }
-    .terms-card {
-      margin-top:14px;
-      border-radius:20px;
-      padding:16px 18px;
-      background:rgba(255,255,255,.62);
-      border:1px solid rgba(18,57,47,.10);
-      box-shadow:0 10px 22px rgba(0,0,0,.04);
-    }
-    .terms-card h3,
-    .auth-card h3,
-    .summary-card h3 {
-      margin:0 0 12px;
-      font-size:.98rem;
-      letter-spacing:.05em;
-      color:#20323a;
-      text-transform:uppercase;
+      letter-spacing:-.02em;
+      color:#111;
     }
     .terms-list {
       margin:0;
-      padding-left:18px;
-      color:#44555f;
-      line-height:1.58;
-      font-size:.9rem;
+      padding-left:20px;
+      font-size:1.04rem;
+      line-height:1.42;
+      color:#111;
+    }
+    .terms-list li { margin-bottom:4px; }
+    .footer-row {
+      margin-top:24px;
       display:grid;
-      gap:6px;
+      grid-template-columns:1fr 1fr;
+      gap:20px;
+      align-items:end;
     }
-    .auth-card,
-    .summary-card {
-      padding:18px 16px;
-    }
-    .auth-card {
-      margin-bottom:12px;
-    }
-    .auth-sign {
-      width:100%;
-      height:124px;
-      object-fit:contain;
-      border-radius:14px;
-      background:linear-gradient(180deg, rgba(255,255,255,.86), rgba(255,255,255,.70));
-      border:1px solid rgba(233,213,173,.26);
-      padding:10px 8px;
-    }
-    .auth-note {
-      margin-top:10px;
-      color:rgba(255,247,232,.78);
-      font-size:.82rem;
-      text-align:center;
-      line-height:1.5;
-    }
-    .auth-note strong {
-      display:block;
-      color:#fff7e8;
-      letter-spacing:.03em;
-      font-size:.88rem;
-      margin-bottom:2px;
-    }
-    .summary-grid {
-      display:grid;
-      grid-template-columns:1fr;
+    .social-line,
+    .contact-line {
+      display:flex;
+      align-items:center;
       gap:10px;
-    }
-    .summary-item {
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
-      gap:14px;
-      color:rgba(255,248,235,.82);
-      font-size:.88rem;
-      padding-bottom:8px;
-      border-bottom:1px dashed rgba(233,213,173,.16);
-    }
-    .summary-item:last-child { border-bottom:none; padding-bottom:0; }
-    .summary-item strong {
-      color:#fff;
-      letter-spacing:.06em;
-      text-transform:uppercase;
-      font-size:.72rem;
-    }
-    .back-side-stamp {
-      margin-top:12px;
-      width:100%;
-      min-height:46px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      border-radius:16px;
-      border:1px dashed rgba(233,213,173,.28);
-      color:#efd9b0;
-      font-size:.78rem;
-      font-weight:900;
-      letter-spacing:.16em;
-      text-transform:uppercase;
-      background:rgba(255,255,255,.04);
-    }
-    .slider-controls {
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      gap:14px;
-      margin-top:14px;
-    }
-    .slider-controls button {
-      appearance:none;
-      border:none;
-      padding:12px 16px;
-      border-radius:14px;
-      background:rgba(255,255,255,.92);
-      color:var(--ink);
-      box-shadow:0 10px 24px rgba(24,39,75,.08);
-      border:1px solid rgba(18,57,47,.08);
+      font-size:.95rem;
       font-weight:800;
-      cursor:pointer;
+      color:#111;
+      margin-top:7px;
     }
-    .dots { display:flex; gap:8px; }
-    .dot {
-      width:10px;
-      height:10px;
+    .icon {
+      width:26px;
+      height:26px;
       border-radius:999px;
-      background:rgba(18,57,47,.18);
-      transition:all .2s ease;
+      background:#000;
+      color:#fff;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      font-size:15px;
+      font-weight:900;
+      flex:none;
     }
-    .dot.active {
-      width:30px;
-      background:var(--forest);
+    .contact-col {
+      font-size:.95rem;
+      font-weight:800;
+      color:#111;
+      line-height:1.4;
     }
-    .loading-card {
-      background:rgba(255,255,255,.84);
-      border:1px solid rgba(18,57,47,.08);
-      border-radius:24px;
-      padding:28px;
-      box-shadow:0 12px 30px rgba(24,39,75,.08);
-    }
-    @media (max-width: 860px) {
-      .coupon-front,
-      .coupon-back {
-        grid-template-columns:1fr;
-      }
-      .panel-side {
-        border-left:none;
-        border-top:1px dashed rgba(198,165,108,.38);
-      }
-      .coupon-card { min-height:auto; }
-      .seal-badge {
-        right:22px;
-        top:22px;
-        width:74px;
-        height:74px;
-        font-size:.62rem;
-      }
-    }
-    @media (max-width: 640px) {
-      .voucher-view-shell { padding:18px 12px 30px; }
-      .viewer-toolbar .actions { width:100%; }
-      .viewer-toolbar .actions button,
-      .viewer-toolbar .actions a { flex:1 1 0; text-align:center; }
-      .panel-main,
-      .panel-side { padding:18px; }
-      .hero-title { font-size:2.45rem; }
-      .coupon-copy,
-      .coupon-note { max-width:100%; }
-      .detail-row {
-        grid-template-columns:1fr;
-        gap:4px;
-      }
-      .brand-medallion {
-        width:78px;
-        height:78px;
-      }
-    }
-
-    .value-back-card {
-      background:#dddddd;
-      border:3px solid #7b7b7b;
-      box-shadow:var(--shadow);
-    }
-    .value-back-card::before,
-    .value-back-card::after { display:none; }
-    .value-back-layout {
-      position:relative;
-      min-height:372px;
-      background:#dddddd;
-      padding:30px 34px 118px;
-      display:grid;
-      grid-template-columns:minmax(0, 1.75fr) minmax(220px, .78fr);
-      gap:24px;
-      color:#101010;
-    }
-    .value-back-left { padding-right:8px; }
-    .value-back-left h2 {
-      margin:0 0 18px;
-      font-size:clamp(2.1rem, 4vw, 2.85rem);
-      line-height:1;
-      letter-spacing:-.03em;
-      color:#101010;
-    }
-    .value-back-terms {
-      margin:0;
-      padding-left:22px;
-      font-size:1.02rem;
-      line-height:1.54;
-      color:#151515;
-    }
-    .value-back-terms li { margin-bottom:4px; }
-    .value-back-right {
+    .back-right {
       display:flex;
       flex-direction:column;
-      align-items:flex-end;
-      gap:18px;
-      position:relative;
-      z-index:2;
+      align-items:center;
+      gap:14px;
+      padding-top:12px;
     }
-    .voucher-value-box {
+    .value-box {
       width:100%;
-      background:#050505;
+      background:#000;
       color:#fff;
       border-radius:12px;
-      padding:14px 16px 16px;
-      box-shadow:0 12px 24px rgba(0,0,0,.12);
+      padding:10px 14px 12px;
+      text-align:center;
+      box-shadow:0 6px 18px rgba(0,0,0,.12);
     }
-    .voucher-value-label {
+    .value-box .label {
       display:block;
-      font-size:1rem;
+      font-size:1.05rem;
       font-weight:900;
       letter-spacing:.03em;
-      text-align:center;
-      text-transform:uppercase;
     }
-    .voucher-value-line {
+    .value-box .line {
       display:block;
+      width:100%;
       height:2px;
-      border-radius:999px;
-      background:rgba(255,255,255,.9);
-      margin:8px 0 10px;
+      background:rgba(255,255,255,.92);
+      margin:9px 0 10px;
     }
-    .voucher-value-number {
+    .value-box .amount {
       display:block;
-      text-align:center;
-      font-size:clamp(2rem, 4vw, 2.75rem);
-      line-height:1;
+      font-size:2rem;
       font-weight:900;
-      letter-spacing:-.04em;
+      line-height:1;
+      letter-spacing:.01em;
     }
-    .back-qr-wrap {
-      width:100%;
-      display:flex;
-      justify-content:flex-end;
-    }
-    .back-qr-frame {
-      width:100%;
-      max-width:270px;
-      aspect-ratio:1 / 1;
+    .qr-wrap {
       position:relative;
+      width:205px;
+      height:205px;
       display:flex;
       align-items:center;
       justify-content:center;
     }
-    #backQrcode {
+    #qrcode {
       width:100%;
       height:100%;
       display:flex;
       align-items:center;
       justify-content:center;
     }
-    #backQrcode img,
-    #backQrcode canvas {
+    #qrcode img,
+    #qrcode canvas {
       width:100% !important;
       height:100% !important;
-      display:block;
       background:transparent !important;
       padding:0 !important;
       border-radius:0 !important;
       box-shadow:none !important;
+      display:block;
     }
-    .back-qr-badge {
+    .qr-center-badge {
       position:absolute;
-      inset:50% auto auto 50%;
+      left:50%;
+      top:50%;
       transform:translate(-50%, -50%);
-      width:39%;
-      aspect-ratio:1 / 1;
+      width:98px;
+      height:98px;
       border-radius:999px;
-      background:#050505;
+      background:#000;
       color:#fff;
-      border:2px solid rgba(255,255,255,.92);
-      box-shadow:0 4px 12px rgba(0,0,0,.18);
+      border:3px solid #fff;
+      box-shadow:0 2px 8px rgba(0,0,0,.14);
       display:flex;
       flex-direction:column;
       align-items:center;
@@ -765,300 +287,114 @@
       text-align:center;
       pointer-events:none;
     }
-    .back-qr-badge span {
-      font-size:1rem;
+    .qr-center-badge .small {
+      font-size:.7rem;
+      font-weight:900;
       line-height:1;
+      letter-spacing:.03em;
+    }
+    .qr-center-badge .big {
+      margin-top:4px;
+      font-size:1.05rem;
       font-weight:900;
-      letter-spacing:.02em;
+      line-height:1;
     }
-    .back-qr-badge strong {
-      font-size:clamp(2rem, 3vw, 2.85rem);
-      line-height:.92;
-      letter-spacing:-.04em;
-      font-weight:900;
+    .loading, .error {
+      background:#fff;
+      border-radius:20px;
+      padding:18px 20px;
+      box-shadow:0 12px 26px rgba(0,0,0,.08);
+      font-weight:700;
     }
-    .value-back-footer {
-      position:absolute;
-      left:34px;
-      right:34px;
-      bottom:24px;
-      display:grid;
-      grid-template-columns:minmax(0, 1fr) minmax(260px, .9fr);
-      gap:20px;
-      align-items:end;
-    }
-    .footer-social, .footer-contact {
-      font-size:1rem;
-      color:#101010;
-      font-weight:800;
-    }
-    .footer-social .item, .footer-contact .item {
-      display:flex;
-      align-items:center;
-      gap:12px;
-      margin-top:10px;
-    }
-    .footer-contact { justify-self:end; }
-    .footer-contact .item { gap:0; }
-    .icon-circle {
-      width:34px;
-      height:34px;
-      border-radius:999px;
-      background:#050505;
-      color:#fff;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      font-size:1rem;
-      font-weight:900;
-      flex:0 0 34px;
-    }
-    .footer-contact .item { display:block; }
-    @media (max-width: 760px) {
-      .value-back-layout {
-        grid-template-columns:1fr;
-        gap:18px;
-        padding:22px 20px 24px;
-      }
-      .value-back-left { padding-right:0; }
-      .value-back-right { align-items:center; }
-      .voucher-value-box, .back-qr-frame { max-width:320px; }
-      .value-back-footer {
-        position:static;
-        margin-top:10px;
-        grid-template-columns:1fr;
-        gap:14px;
-        padding-top:2px;
-      }
-      .footer-contact { justify-self:start; }
-      .value-back-left h2 { font-size:2rem; }
-      .value-back-terms { font-size:.96rem; }
-    }
-
-    @media print {
-      body { background:#fff !important; }
-      .viewer-toolbar,
-      .slider-controls { display:none !important; }
-      .voucher-view-shell { max-width:none; padding:0; }
-      .slider-shell { overflow:visible; }
-      .slider-track { display:block; transform:none !important; }
-      .slide { min-width:auto; padding:0; page-break-inside:avoid; }
-      .voucher-stage { padding:0; }
-      .coupon-card {
-        width: 160mm;
-        min-height: 90mm;
-        box-shadow:none;
-        margin:8mm auto;
-        page-break-inside:avoid;
-      }
-      @page { size:A4 portrait; margin:10mm; }
-    }
-  </style>
-
-  <style id="luxury-voucher-overrides">
-    body.voucher-slider-page {
-      background:
-        radial-gradient(circle at top left, rgba(199,166,106,.16), transparent 28%),
-        radial-gradient(circle at 80% 10%, rgba(16,53,45,.22), transparent 24%),
-        linear-gradient(180deg, #f4efe6 0%, #e7dfd1 100%);
-    }
-    body.voucher-slider-page::before {
-      content:"";
-      position:fixed;
-      inset:0;
-      pointer-events:none;
-      background:repeating-linear-gradient(135deg, rgba(103,86,57,.018) 0 1px, transparent 1px 18px);
-      opacity:.4;
-    }
-    .viewer-title, .hero-title, .back-title {
-      font-family:"Iowan Old Style","Palatino Linotype","Book Antiqua",Georgia,serif;
-    }
-    .viewer-toolbar button, .viewer-toolbar a {
-      border-radius:16px;
-      border:1px solid rgba(199,166,106,.18);
-      box-shadow:0 14px 28px rgba(16,26,22,.08), inset 0 1px 0 rgba(255,255,255,.55);
-    }
-    .viewer-toolbar .primary {
-      background:linear-gradient(135deg, #1c473b, #102925);
-      border-color:rgba(199,166,106,.28);
-    }
-    .coupon-card {
-      width:min(100%, 640px);
-      min-height:356px;
-      border-radius:30px;
-      border:1px solid rgba(199,166,106,.26);
-      box-shadow:0 28px 70px rgba(14, 28, 24, 0.22);
-    }
-    .coupon-card::after {
-      background:
-        linear-gradient(115deg, rgba(255,255,255,.26), transparent 22%, transparent 78%, rgba(255,255,255,.14)),
-        repeating-linear-gradient(135deg, rgba(125,106,71,.012) 0 1px, transparent 1px 15px);
-    }
-    .panel-main {
-      background:
-        linear-gradient(145deg, rgba(255,255,255,.80), rgba(255,255,255,.42)),
-        repeating-linear-gradient(0deg, rgba(110,95,70,.015), rgba(110,95,70,.015) 2px, transparent 2px, transparent 9px),
-        linear-gradient(135deg, #fffdfa, #f3ecde);
-    }
-    .panel-main::before,
-    .panel-side::before {
-      border-color: rgba(199,166,106,.34);
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
-    }
-    .panel-side {
-      background:
-        radial-gradient(circle at top right, rgba(255,255,255,.12), transparent 26%),
-        radial-gradient(circle at bottom left, rgba(255,255,255,.08), transparent 24%),
-        linear-gradient(165deg, #16352e 0%, #0d231f 100%);
-      border-left:1px dashed rgba(199,166,106,.40);
-    }
-    .collection-label, .back-label, .detail-label { color:#8a6b3b; }
-    .hero-title { color:#19262b; }
-    .seal-badge {
-      background: radial-gradient(circle, rgba(255,255,255,.92) 0%, rgba(247,236,213,.90) 62%, rgba(219,194,144,.96) 100%);
-      border:1px solid rgba(199,166,106,.62);
-      box-shadow:0 12px 28px rgba(122,90,38,.18), inset 0 0 0 10px rgba(255,255,255,.28);
-      color:#7b5e2f;
-    }
-    .brand-medallion {
-      width:124px;
-      height:124px;
-      background:linear-gradient(145deg, rgba(255,255,255,.99), rgba(245,233,204,.94));
-      border:1px solid rgba(233,213,173,.72);
-      box-shadow:0 16px 26px rgba(0,0,0,.18), inset 0 0 0 10px rgba(24,80,65,.08);
-    }
-    .qr-box, .auth-card, .summary-card {
-      border:1px solid rgba(233,213,173,.26);
-      box-shadow:0 14px 24px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.08);
-    }
-    .terms-card {
-      background:linear-gradient(180deg, rgba(255,255,255,.76), rgba(255,251,244,.62));
-      border:1px solid rgba(199,166,106,.16);
-    }
-    .back-side-stamp {
-      border:1px dashed rgba(233,213,173,.34);
-      color:#f2dfba;
-      background:rgba(255,255,255,.05);
+    .hidden { display:none !important; }
+    @media (max-width: 960px) {
+      .preview-grid { grid-template-columns:1fr; }
+      .back-card { grid-template-columns:1fr; }
+      .back-right { order:-1; }
+      .qr-wrap { width:170px; height:170px; }
+      .panel-label { font-size:1.2rem; }
+      .back-title { font-size:1.6rem; }
+      .terms-list { font-size:.94rem; }
+      .footer-row { grid-template-columns:1fr; }
     }
     @media print {
-      .coupon-card {
-        width: 158mm;
-        min-height: 89mm;
-      }
+      body { background:#fff; }
+      .no-print { display:none !important; }
+      .page { max-width:none; padding:0; }
+      .hero-card { box-shadow:none; border:none; padding:0 0 8px; margin:0; }
+      .preview-grid { gap:10mm; }
+      .voucher-card { box-shadow:none; break-inside:avoid; }
+      @page { size:A4 landscape; margin:10mm; }
     }
   </style>
-
 </head>
-<body class="voucher-slider-page">
-  <div class="voucher-view-shell">
-    <div class="viewer-toolbar no-print">
-      <div class="left">
-        <span class="soft-badge">Voucher Slides</span>
-        <h1 class="viewer-title">Premium Coffee Voucher</h1>
-        <p class="viewer-subtitle">คูปองสไตล์พรีเมียมขนาดกะทัดรัด ดูด้านหน้าและ policy ด้านหลังได้แบบสไลด์</p>
+<body>
+  <div class="page">
+    <div class="toolbar no-print">
+      <div class="title-wrap">
+        <h1>Print Voucher</h1>
+        <p>พรีวิวบัตร Aroonsawat แบบหน้าหลัง พร้อมพิมพ์หรือ Save as PDF</p>
       </div>
       <div class="actions">
-        <button class="primary" id="printBtn" type="button">Print / Save PDF</button>
-        <a href="javascript:history.back()">Back</a>
+        <button class="primary" type="button" id="printBtn">Print Voucher / Save PDF</button>
+        <a href="javascript:history.back()">Back to Search</a>
       </div>
     </div>
 
-    <div id="loadingState" class="loading-card">Loading voucher...</div>
+    <div id="loadingState" class="loading">Loading voucher...</div>
+    <div id="errorState" class="error hidden"></div>
 
     <div id="viewer" class="hidden">
-      <div class="slider-shell">
-        <div class="slider-track" id="sliderTrack">
-          <section class="slide">
-            <div class="voucher-stage">
-              <div class="coupon-card coupon-front">
-                <div class="panel-main">
-                  <div class="mini-status issued" id="frontStatus">issued</div>
-                  <div class="foil-line"></div>
-                  <div class="collection-label" id="frontTitleSmall">Complimentary</div>
-                  <h2 class="hero-title"><span>Reserve Collection</span><span id="frontTitleBig">1 DRINK</span></h2>
-                  <div class="seal-badge">premium brew</div>
-                  <div class="coupon-copy" id="frontDescription">Present this voucher at <strong>AROONSAWAT</strong> to enjoy one complimentary drink.</div>
-                  <div class="coupon-note" id="frontNote">Valid for one selected beverage only. Present this voucher before ordering and enjoy a premium coffee moment.</div>
-                  <div class="coupon-meta">
-                    <div class="serial-box serial-box-wide"><span>Voucher Code</span><span id="voucherCodeText">-</span></div>
-                  </div>
-                </div>
-                <div class="panel-side">
-                  <div class="brand-side-top">
-                    <span class="brand-chip">Starbucks Style</span>
-                    <span class="brand-chip">QR Ready</span>
-                  </div>
-                  <div class="brand-medallion">
-                    <img src="assets/front_logo_crop.png" alt="Brand logo">
-                  </div>
-                  <div class="brand-divider"></div>
-                  <p class="side-heading">Complimentary Beverage<small>crafted coffee moment</small></p>
-                  <div class="qr-box">
-                    <div id="qrcode"></div>
-                    <div class="qr-caption">Present this QR code together with the voucher code at the counter when redeeming.</div>
-                  </div>
-                  <div class="side-note">One-time redemption · Valid for selected beverage only</div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section class="slide">
-            <div class="voucher-stage">
-              <div class="coupon-card value-back-card">
-                <div class="value-back-layout">
-                  <div class="value-back-left">
-                    <h2>Terms &amp; Conditions</h2>
-                    <ul class="value-back-terms" id="backTermsList">
-                      <li>Valid at Aroonsawat Café (We Proudly Serve Starbucks®) only</li>
-                      <li>Buy THB 500 = THB 600</li>
-                      <li>Valid for 1 month from purchase date</li>
-                      <li>Present card &amp; scan QR before ordering</li>
-                      <li>Usable until balance is fully redeemed (within validity)</li>
-                      <li>Non-refundable, non-transferable, no cash value</li>
-                      <li>Lost/damaged card will not be replaced</li>
-                      <li>Not combinable with other promotions</li>
-                      <li>Aroonsawat Café reserves the right to amend without prior notice</li>
-                    </ul>
-                  </div>
-                  <div class="value-back-right">
-                    <div class="voucher-value-box">
-                      <span class="voucher-value-label">VOUCHER VALUE:</span>
-                      <span class="voucher-value-line"></span>
-                      <span class="voucher-value-number" id="backValueTop">THB 600</span>
-                    </div>
-                    <div class="back-qr-wrap">
-                      <div class="back-qr-frame">
-                        <div id="backQrcode"></div>
-                        <div class="back-qr-badge">
-                          <span>THB</span>
-                          <strong id="backValueBadge">600</strong>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="value-back-footer">
-                    <div class="footer-social">
-                      <div class="item"><span class="icon-circle">f</span><span>Laya Resort Phuket</span></div>
-                      <div class="item"><span class="icon-circle">◎</span><span>@Laya Resort Phuket</span></div>
-                    </div>
-                    <div class="footer-contact">
-                      <div class="item">+66 (0) 7632 8888</div>
-                      <div class="item">fb@layaresortphuket.com</div>
-                      <div class="item">www.layaresortphuket.com/layaresortphuket</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
+      <div class="hero-card no-print">
+        <div class="code-line" id="heroCode">Ready to print voucher</div>
+        <p id="heroSub">Aroonsawat front/back style</p>
       </div>
 
-      <div class="slider-controls no-print">
-        <button type="button" id="prevBtn">◀ Prev</button>
-        <div class="dots"><span class="dot active"></span><span class="dot"></span></div>
-        <button type="button" id="nextBtn">Next ▶</button>
+      <div class="preview-grid">
+        <section class="panel">
+          <div class="panel-label">FRONT</div>
+          <div class="voucher-card front-card" id="frontCard">
+            <div class="front-badge">
+              <span class="amount" id="frontAmount">THB 500</span>
+              <span class="sub">VOUCHER</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-label">BACK</div>
+          <div class="voucher-card back-card">
+            <div class="back-left">
+              <h2 class="back-title">Terms &amp; Conditions</h2>
+              <ul class="terms-list" id="termsList"></ul>
+              <div class="footer-row">
+                <div>
+                  <div class="social-line"><span class="icon">f</span><span>Laya Resort Phuket</span></div>
+                  <div class="social-line"><span class="icon">◎</span><span>@Laya Resort Phuket</span></div>
+                </div>
+                <div class="contact-col">
+                  <div class="contact-line"><span>+66 (0) 7632 8888</span></div>
+                  <div class="contact-line"><span>fb@layaresortphuket.com</span></div>
+                  <div class="contact-line"><span>www.layaresortphuket.com/layaresortphuket</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="back-right">
+              <div class="value-box">
+                <span class="label">VOUCHER VALUE:</span>
+                <span class="line"></span>
+                <span class="amount" id="backValueText">THB 600</span>
+              </div>
+              <div class="qr-wrap">
+                <div id="qrcode"></div>
+                <div class="qr-center-badge">
+                  <span class="small">THB</span>
+                  <span class="big" id="badgeValueText">600</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   </div>
@@ -1068,104 +404,105 @@
     import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 
     const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    const sliderTrack = document.getElementById("sliderTrack");
-    const viewer = document.getElementById("viewer");
-    const loadingState = document.getElementById("loadingState");
-    const dots = Array.from(document.querySelectorAll('.dot'));
-    let currentIndex = 0;
+    const code = params.get('code');
+    const printBtn = document.getElementById('printBtn');
+    const loadingState = document.getElementById('loadingState');
+    const errorState = document.getElementById('errorState');
+    const viewer = document.getElementById('viewer');
+    const heroCode = document.getElementById('heroCode');
+    const heroSub = document.getElementById('heroSub');
+    const frontCard = document.getElementById('frontCard');
+    const frontAmount = document.getElementById('frontAmount');
+    const backValueText = document.getElementById('backValueText');
+    const badgeValueText = document.getElementById('badgeValueText');
+    const termsList = document.getElementById('termsList');
 
-    function toDateObject(value) {
-      if (!value) return null;
-      try { return value.toDate ? value.toDate() : new Date(value); } catch { return null; }
+    printBtn?.addEventListener('click', () => window.print());
+
+    function normalizeNumber(value) {
+      const num = Number(value);
+      return Number.isFinite(num) ? num : null;
     }
-    function formatDate(value) {
-      const d = toDateObject(value);
-      return d ? d.toLocaleDateString("en-GB") : "Until redeemed";
+
+    function inferPlanFromData(data) {
+      const purchaseAmount = normalizeNumber(data.purchase_amount || data.face_amount || data.sell_amount || data.purchasePrice);
+      const voucherValue = normalizeNumber(data.voucher_value || data.redeem_value || data.value_amount || data.balance_amount || data.initial_balance);
+      if (purchaseAmount && voucherValue) {
+        return { purchaseAmount, voucherValue };
+      }
+
+      const plan = String(data.price_plan || data.package_plan || data.pricePlan || '').toLowerCase();
+      if (plan.includes('1000') || plan.includes('1200')) return { purchaseAmount:1000, voucherValue:1200 };
+      if (plan.includes('500') || plan.includes('600')) return { purchaseAmount:500, voucherValue:600 };
+
+      const haystack = [
+        data.voucher_code, data.internal_no, data.display_no, data.card_label,
+        data.reason, data.note, data.voucher_title_big, data.voucher_title_small
+      ].map(v => String(v || '').toUpperCase()).join(' ');
+
+      if (haystack.includes('1200') || haystack.includes('1,200') || haystack.includes('1000') || haystack.includes('1,000') || haystack.includes('SV1200') || haystack.includes('SV1000')) {
+        return { purchaseAmount:1000, voucherValue:1200 };
+      }
+      if (haystack.includes('600') || haystack.includes('500') || haystack.includes('SV600') || haystack.includes('SV500')) {
+        return { purchaseAmount:500, voucherValue:600 };
+      }
+
+      return { purchaseAmount:500, voucherValue:600 };
     }
-    function getDisplayStatus(data) {
-      const expiry = toDateObject(data.expiry_date);
-      if (data.status === "issued" && expiry && new Date() > expiry) return "expired";
-      return data.status || "issued";
+
+    function formatTHB(value) {
+      return `THB ${Number(value).toLocaleString('en-US')}`;
     }
-    function setSlide(index) {
-      currentIndex = Math.max(0, Math.min(1, index));
-      sliderTrack.style.transform = `translateX(-${currentIndex * 100}%)`;
-      dots.forEach((dot, i) => dot.classList.toggle('active', i === currentIndex));
-    }
-    function detectVoucherAmounts(data) {
-      const purchase = Number(data.purchase_amount || data.face_value || 0);
-      const redeem = Number(data.voucher_value || data.redeem_value || 0);
-      if (purchase > 0 && redeem > 0) return { purchase, redeem };
-      const haystack = [data.price_plan, data.card_label, data.display_no, data.voucher_title_small, data.voucher_title_big, data.voucher_description, data.reason, data.card_group].join(' ').toLowerCase();
-      if (haystack.includes('1000') || haystack.includes('1,000') || haystack.includes('1200') || haystack.includes('1,200')) return { purchase: 1000, redeem: 1200 };
-      return { purchase: 500, redeem: 600 };
-    }
-    function formatAmount(value) {
-      return Number(value || 0).toLocaleString('en-US');
-    }
-    function renderBackCard(data) {
-      const amounts = detectVoucherAmounts(data);
-      document.getElementById('backValueTop').textContent = `THB ${formatAmount(amounts.redeem)}`;
-      document.getElementById('backValueBadge').textContent = String(amounts.redeem);
-      const terms = [
-        'Valid at Aroonsawat Café (We Proudly Serve Starbucks®) only',
-        `Buy THB ${formatAmount(amounts.purchase)} = THB ${formatAmount(amounts.redeem)}`,
-        'Valid for 1 month from purchase date',
-        'Present card & scan QR before ordering',
-        'Usable until balance is fully redeemed (within validity)',
-        'Non-refundable, non-transferable, no cash value',
-        'Lost/damaged card will not be replaced',
-        'Not combinable with other promotions',
-        'Aroonsawat Café reserves the right to amend without prior notice'
+
+    function buildTerms(purchaseAmount, voucherValue) {
+      return [
+        `Valid at Aroonsawat Café (We Proudly Serve Starbucks®) only`,
+        `Buy THB ${Number(purchaseAmount).toLocaleString('en-US')} = THB ${Number(voucherValue).toLocaleString('en-US')}`,
+        `Valid for 1 month from purchase date`,
+        `Present card & scan QR before ordering`,
+        `Usable until balance is fully redeemed (within validity)`,
+        `Non-refundable, non-transferable, no cash value`,
+        `Lost/damaged card will not be replaced`,
+        `Not combinable with other promotions`,
+        `Aroonsawat Café reserves the right to amend without prior notice`
       ];
-      document.getElementById('backTermsList').innerHTML = terms.map((item) => `<li>${item}</li>`).join('');
-
-      const qrHost = document.getElementById('backQrcode');
-      qrHost.innerHTML = '';
-      new QRCode(qrHost, {
-        text: data.voucher_code || '',
-        width: 250,
-        height: 250,
-        correctLevel: QRCode.CorrectLevel.H
-      });
     }
-    document.getElementById('prevBtn').addEventListener('click', () => setSlide(currentIndex - 1));
-    document.getElementById('nextBtn').addEventListener('click', () => setSlide(currentIndex + 1));
-    document.getElementById('printBtn').addEventListener('click', () => window.print());
 
-    let startX = null;
-    sliderTrack.addEventListener('touchstart', (e) => { startX = e.changedTouches[0].clientX; }, { passive:true });
-    sliderTrack.addEventListener('touchend', (e) => {
-      if (startX == null) return;
-      const diff = e.changedTouches[0].clientX - startX;
-      if (Math.abs(diff) > 50) setSlide(diff < 0 ? currentIndex + 1 : currentIndex - 1);
-      startX = null;
-    }, { passive:true });
-
-    function fillVoucher(data) {
-      const displayStatus = getDisplayStatus(data);
-      const frontStatus = document.getElementById('frontStatus');
-      frontStatus.textContent = displayStatus;
-      frontStatus.className = `mini-status ${displayStatus}`;
-
-      document.getElementById('frontTitleSmall').textContent = data.voucher_title_small || 'Complimentary';
-      document.getElementById('frontTitleBig').textContent = data.voucher_title_big || '1 DRINK';
-      document.getElementById('frontDescription').innerHTML = (data.voucher_description || 'Present this voucher at <strong>AROONSAWAT</strong> to enjoy one complimentary drink.').replace('AROONSAWAT', '<strong>AROONSAWAT</strong>');
-      const amounts = detectVoucherAmounts(data);
-      document.getElementById('frontNote').textContent = `Reusable card · Buy THB ${formatAmount(amounts.purchase)} = THB ${formatAmount(amounts.redeem)} · Present this card before ordering.`;
-      document.getElementById('voucherCodeText').textContent = `${data.voucher_code || '-'}`;
-
-      const qr = document.getElementById('qrcode');
-      qr.innerHTML = '';
-      new QRCode(qr, {
-        text: data.voucher_code || '',
-        width: 118,
-        height: 118,
+    function renderQr(text) {
+      const host = document.getElementById('qrcode');
+      host.innerHTML = '';
+      new QRCode(host, {
+        text: text || '',
+        width: 205,
+        height: 205,
         correctLevel: QRCode.CorrectLevel.H
       });
+      const img = host.querySelector('img');
+      const canvas = host.querySelector('canvas');
+      if (img) {
+        img.alt = 'Voucher QR Code';
+        img.style.background = 'transparent';
+      }
+      if (canvas) {
+        canvas.style.background = 'transparent';
+      }
+    }
 
-      renderBackCard(data);
+    function renderVoucher(data) {
+      const { purchaseAmount, voucherValue } = inferPlanFromData(data);
+      heroCode.textContent = `Ready to print ${data.voucher_code || data.card_label || '-'} in Aroonsawat front/back style.`;
+      heroSub.textContent = `Package ${formatTHB(purchaseAmount)} → Value ${formatTHB(voucherValue)}`;
+
+      frontCard.style.backgroundImage = `url('assets/voucher-value/front-${purchaseAmount}.png')`;
+      frontAmount.textContent = formatTHB(purchaseAmount);
+      backValueText.textContent = formatTHB(voucherValue);
+      badgeValueText.textContent = Number(voucherValue).toLocaleString('en-US');
+
+      termsList.innerHTML = buildTerms(purchaseAmount, voucherValue)
+        .map(item => `<li>${item}</li>`)
+        .join('');
+
+      renderQr(data.voucher_code || data.card_label || '');
     }
 
     async function loadVoucher() {
@@ -1179,11 +516,13 @@
     (async () => {
       try {
         const data = await loadVoucher();
-        fillVoucher(data);
+        renderVoucher(data);
         loadingState.classList.add('hidden');
         viewer.classList.remove('hidden');
       } catch (err) {
-        loadingState.textContent = err.message || 'Failed to load voucher';
+        loadingState.classList.add('hidden');
+        errorState.textContent = err?.message || 'Failed to load voucher';
+        errorState.classList.remove('hidden');
       }
     })();
   </script>

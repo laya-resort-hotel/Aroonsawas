@@ -111,7 +111,8 @@
             <p><strong>Voucher Code:</strong> ${data.voucher_code || "-"}</p>
             <p><strong>Status:</strong> <span class="status-pill status-${data.status || "issued"}">${statusLabel(data.status)}</span></p>
             <p><strong>Card Group:</strong> ${data.card_group || "-"}</p>
-            <p><strong>Package:</strong> ${data.purchase_amount ? `Buy THB ${Number(data.purchase_amount || 0).toLocaleString()} = THB ${Number(data.voucher_value || 0).toLocaleString()}` : "-"}</p>
+            <p><strong>Price Plan:</strong> ${data.price_plan_label || (data.purchase_amount ? `Buy THB ${Number(data.purchase_amount).toLocaleString('en-US')} = THB ${Number(data.voucher_value || 0).toLocaleString('en-US')}` : '-') }</p>
+            <p><strong>Voucher Value:</strong> ${data.voucher_value ? `THB ${Number(data.voucher_value).toLocaleString('en-US')}` : '-'}</p>
             <p><strong>Department / Outlet:</strong> ${data.department || "-"} / ${data.outlet || "-"}</p>
             <p><strong>Created At:</strong> ${fmt(data.created_at)}</p>
             <p><strong>Issued By:</strong> ${data.issued_by_name || data.issued_by_uid || "-"}</p>

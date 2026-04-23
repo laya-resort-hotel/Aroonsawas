@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Card Desk</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .desk-grid { display:grid; gap:18px; }
+    .desk-actions { display:flex; gap:10px; flex-wrap:wrap; }
+    .desk-table-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .desk-stats { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; }
+    .desk-note { padding:16px 18px; border-radius:18px; background:rgba(0,98,65,.08); color:var(--primary-2); border:1px solid rgba(0,98,65,.12); }
+    .desk-filter { display:grid; grid-template-columns:1.2fr .8fr; gap:12px; }
+    .toolbar-inline { display:flex; gap:10px; flex-wrap:wrap; }
+    @media (max-width: 900px) {
+      .desk-stats { grid-template-columns:repeat(2, minmax(0,1fr)); }
+      .desk-filter { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body class="app-page">
+  <div class="container app-shell">
+    <section class="page-header">
+      <div class="page-header-row">
+        <div>
+          <span class="soft-badge">Front Desk Flow</span>
+          <h1>Card Desk</h1>
+          <p class="page-subtitle">หน้านี้ใช้คุมสต็อกการ์ด Voucher แบบถาวร ดูว่าใบไหนพร้อมแจก ใช้แล้ว หรือถูกปิดใช้งาน และสามารถ Reuse กลับมาใช้ใหม่ได้ทันที</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="card section-card result-highlight">
+      <h2>Reusable Card Mode</h2>
+      <p class="page-subtitle">Front Desk ไม่ต้องกด Generate QR อีกแล้ว เพียงหยิบการ์ดจริงให้แขก แล้วค่อยนำกลับมา Reset หลังใช้งาน</p>
+      <div class="desk-note">สถานะในระบบ: <strong>issued = Available</strong>, <strong>redeemed = Used</strong>, <strong>disabled = Disabled</strong></div>
+    </div>
+
+    <div class="desk-grid">
+      <div class="desk-stats">
+        <div class="stat-card"><div class="stat-label">Available</div><div class="stat-value" id="availableCount">0</div></div>
+        <div class="stat-card"><div class="stat-label">Used</div><div class="stat-value" id="usedCount">0</div></div>
+        <div class="stat-card"><div class="stat-label">Disabled</div><div class="stat-value" id="disabledCount">0</div></div>
+        <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="totalCount">0</div></div>
+      </div>
+
+      <div class="card section-card">
+        <h2>Filter & Actions</h2>
+        <div class="desk-filter">
+          <input id="searchInput" type="text" placeholder="ค้นหา Card Label หรือ Voucher Code" />
+          <select id="statusFilter">
+            <option value="all">All Status</option>
+            <option value="issued">Available</option>
+            <option value="redeemed">Used</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </div>
+        <div style="height:10px"></div>
+        <div class="desk-actions">
+          <button id="refreshBtn" type="button">Refresh</button>
+          <button id="showAvailableBtn" type="button" class="button-secondary">Show Available</button>
+          <button id="showUsedBtn" type="button" class="button-secondary">Show Used</button>
+          <button id="showAllBtn" type="button" class="button-secondary">Show All</button>
+        </div>
+      </div>
+
+      <div class="card section-card">
+        <div class="section-head">
+          <div>
+            <div class="section-title">Card Inventory</div>
+            <div class="section-subtitle">การ์ดที่สร้างในโหมด reusable_card</div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="voucher-table">
+            <thead>
+              <tr>
+                <th>Card Label</th>
+                <th>Voucher Code</th>
+                <th>Outlet</th>
+                <th>Status</th>
+                <th>Redeemed At</th>
+                <th>Reset Count</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"><tr><td colspan="7">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav no-print" id="navMenu"></div>
+  </div>
+
+  <script type="module">
+    import { db } from "./firebase-config.js";
+    import { requireRole, renderNav } from "./auth-guard.js";
+    import {
+      collection, getDocs, query, where, doc, runTransaction, serverTimestamp, addDoc
+    } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+
+    const { user, profile } = await requireRole(["supervisor", "manager", "admin"]);
+    renderNav(profile);
+
+    const availableCount = document.getElementById("availableCount");
+    const usedCount = document.getElementById("usedCount");
+    const disabledCount = document.getElementById("disabledCount");
+    const totalCount = document.getElementById("totalCount");
+    const tableBody = document.getElementById("tableBody");
+    const searchInput = document.getElementById("searchInput");
+    const statusFilter = document.getElementById("statusFilter");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const showAvailableBtn = document.getElementById("showAvailableBtn");
+    const showUsedBtn = document.getElementById("showUsedBtn");
+    const showAllBtn = document.getElementById("showAllBtn");
+
+    let cards = [];
+
+    function toDate(value) {
+      if (!value) return null;
+      try { return value.toDate ? value.toDate() : new Date(value); } catch { return null; }
+    }
+    function fmt(value) {
+      const d = toDate(value);
+      return d ? d.toLocaleString("th-TH") : "-";
+    }
+    function sameDept(data) {
+      if (profile.role === "admin") return true;
+      return (data.department || "") === (profile.department || "");
+    }
+    function statusLabel(status) {
+      if (status === "issued") return "Available";
+      if (status === "redeemed") return "Used";
+      if (status === "disabled") return "Disabled";
+      return status || "-";
+    }
+
+    async function logAction(card, action, note) {
+      await addDoc(collection(db, "voucher_logs"), {
+        voucher_code: card.voucher_code || "",
+        voucher_ref: card.internal_no || "",
+        department: card.department || "",
+        outlet: card.outlet || "",
+        action,
+        action_at: serverTimestamp(),
+        action_by_uid: user.uid,
+        action_by_name: profile.name || profile.employee_id || "",
+        action_by_role: profile.role,
+        note
+      });
+    }
+
+    async function loadCards() {
+      tableBody.innerHTML = `<tr><td colspan="7">กำลังโหลด...</td></tr>`;
+      const snap = await getDocs(query(collection(db, "vouchers"), where("voucher_mode", "==", "reusable_card")));
+      cards = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter(sameDept);
+      render();
+    }
+
+    function render() {
+      const term = searchInput.value.trim().toLowerCase();
+      const status = statusFilter.value;
+      const filtered = cards.filter((card) => {
+        const matchesTerm = !term
+          || (card.card_label || "").toLowerCase().includes(term)
+          || (card.voucher_code || "").toLowerCase().includes(term);
+        const matchesStatus = status === "all" || (card.status || "") === status;
+        return matchesTerm && matchesStatus;
+      }).sort((a, b) => (a.card_label || "").localeCompare(b.card_label || ""));
+
+      const available = cards.filter((x) => x.status === "issued").length;
+      const used = cards.filter((x) => x.status === "redeemed").length;
+      const disabled = cards.filter((x) => x.status === "disabled").length;
+      availableCount.textContent = String(available);
+      usedCount.textContent = String(used);
+      disabledCount.textContent = String(disabled);
+      totalCount.textContent = String(cards.length);
+
+      if (!filtered.length) {
+        tableBody.innerHTML = `<tr><td colspan="7">ไม่พบการ์ดตามเงื่อนไข</td></tr>`;
+        return;
+      }
+
+      tableBody.innerHTML = filtered.map((card) => `
+        <tr>
+          <td>${card.card_label || "-"}</td>
+          <td>${card.voucher_code || "-"}</td>
+          <td>${card.outlet || "-"}</td>
+          <td><span class="status-pill status-${card.status || "issued"}">${statusLabel(card.status)}</span></td>
+          <td>${fmt(card.redeemed_at)}</td>
+          <td>${card.reset_count || 0}</td>
+          <td>
+            <div class="desk-table-actions">
+              ${card.status === "redeemed" ? `<button type="button" data-action="reuse" data-id="${card.id}">Reuse</button>` : ""}
+              ${card.status !== "disabled" ? `<button type="button" class="button-secondary" data-action="disable" data-id="${card.id}">Disable</button>` : `<button type="button" class="button-secondary" data-action="enable" data-id="${card.id}">Enable</button>`}
+              <button type="button" class="button-ghost" data-action="detail" data-id="${card.id}">Detail</button>
+            </div>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    async function updateCard(cardId, action) {
+      const card = cards.find((x) => x.id === cardId);
+      if (!card) return;
+      const ref = doc(db, "vouchers", cardId);
+
+      if (action === "detail") {
+        window.open(`voucher-detail.html?code=${encodeURIComponent(card.voucher_code || "")}`, "_blank");
+        return;
+      }
+
+      if (action === "reuse") {
+        const ok = confirm(`ยืนยัน Reuse การ์ด ${card.card_label || card.voucher_code}?`);
+        if (!ok) return;
+        await runTransaction(db, async (transaction) => {
+          const snap = await transaction.get(ref);
+          if (!snap.exists()) throw new Error("Card not found");
+          const latest = snap.data();
+          if (latest.status !== "redeemed") throw new Error("Reuse ได้เฉพาะการ์ดที่ใช้แล้ว");
+          transaction.update(ref, {
+            status: "issued",
+            redeemed_at: null,
+            redeemed_by_uid: "",
+            redeemed_by_name: "",
+            last_reset_at: serverTimestamp(),
+            last_reset_by_uid: user.uid,
+            last_reset_by_name: profile.name || profile.employee_id || "",
+            reset_count: (latest.reset_count || 0) + 1,
+            updated_at: serverTimestamp()
+          });
+        });
+        await logAction(card, "reused", "Card reset to available");
+      }
+
+      if (action === "disable") {
+        const ok = confirm(`ปิดใช้งานการ์ด ${card.card_label || card.voucher_code}?`);
+        if (!ok) return;
+        await runTransaction(db, async (transaction) => {
+          const snap = await transaction.get(ref);
+          if (!snap.exists()) throw new Error("Card not found");
+          transaction.update(ref, {
+            status: "disabled",
+            disabled_reason: "Disabled from Card Desk",
+            updated_at: serverTimestamp()
+          });
+        });
+        await logAction(card, "disabled", "Card disabled from Card Desk");
+      }
+
+      if (action === "enable") {
+        const ok = confirm(`เปิดใช้งานการ์ด ${card.card_label || card.voucher_code}?`);
+        if (!ok) return;
+        await runTransaction(db, async (transaction) => {
+          const snap = await transaction.get(ref);
+          if (!snap.exists()) throw new Error("Card not found");
+          transaction.update(ref, {
+            status: "issued",
+            disabled_reason: "",
+            updated_at: serverTimestamp()
+          });
+        });
+        await logAction(card, "enabled", "Card enabled again");
+      }
+
+      await loadCards();
+    }
+
+    tableBody.addEventListener("click", async (e) => {
+      const btn = e.target.closest("button[data-action]");
+      if (!btn) return;
+      try {
+        await updateCard(btn.dataset.id, btn.dataset.action);
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    searchInput.addEventListener("input", render);
+    statusFilter.addEventListener("change", render);
+    refreshBtn.addEventListener("click", loadCards);
+    showAvailableBtn.addEventListener("click", () => { statusFilter.value = "issued"; render(); });
+    showUsedBtn.addEventListener("click", () => { statusFilter.value = "redeemed"; render(); });
+    showAllBtn.addEventListener("click", () => { statusFilter.value = "all"; searchInput.value = ""; render(); });
+
+    await loadCards();
+  </script>
+</body>
+</html>

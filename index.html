@@ -1,23 +1,13 @@
 <!DOCTYPE html>
 <html lang="th">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Home</title><link rel="stylesheet" href="style.css" /></head>
-<body><div id="app"></div>
-<script type="module">
-  import { mountShell, roleCan } from './auth-guard.js';
-  const ctx = await mountShell('index.html','Home','โมดูลใหม่สำหรับบัตรขายมูลค่า แยกจาก Free Voucher เดิมอย่างชัดเจน');
-  if (!ctx) throw new Error('auth required');
-  const { profile } = ctx;
-  const tiles = [
-    ['dashboard.html','Dashboard','สรุปยอดขาย ยอดใช้ และยอดคงเหลือ','📊','dashboard'],
-    ['create-card.html','Create Card','สร้างบัตรใหม่เข้าระบบในสถานะ draft','🪪','create'],
-    ['sell-card.html','Sell Card','เปิดใช้งานและบันทึกการขายจริง','💳','sell'],
-    ['scan-deduct.html','Scan / Deduct','สแกน QR แล้วตัดยอดคงเหลือ','📷','scan'],
-    ['check-balance.html','Check Balance','เช็กยอดคงเหลือโดยไม่ตัดยอด','🔎','balance'],
-    ['search-card.html','Search Card','ค้นหาบัตร ดูสถานะ และเปิดรายละเอียด','🗂️','search'],
-    ['transactions.html','Transactions','ตรวจสอบรายการ sale / debit ย้อนหลัง','🧾','transactions'],
-    ['settings.html','Settings','ตั้งค่า outlet, validity และ URL กลับไประบบเดิม','⚙️','settings'],
-    ['admin-users.html','Users','อ่านรายชื่อผู้ใช้จากระบบเดิมเพื่อดู role ปัจจุบัน','👥','users']
-  ].filter(([, , , , feature]) => roleCan(profile.role, feature));
-  document.getElementById('pageContent').innerHTML = `<div class="tile-grid">${tiles.map(([href,title,desc,icon]) => `<a class="tile" href="${href}"><div class="icon">${icon}</div><h3>${title}</h3><p class="helper">${desc}</p></a>`).join('')}</div>`;
-</script>
-</body></html>
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="refresh" content="0; url=login.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Laya Voucher</title>
+  <script>window.location.replace("login.html");</script>
+</head>
+<body>
+  <p>กำลังพาไปหน้า Login... <a href="login.html">กดที่นี่ถ้าไม่เปลี่ยนหน้า</a></p>
+</body>
+</html>

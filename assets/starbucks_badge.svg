@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="g" cx="50%" cy="35%" r="70%">
+      <stop offset="0%" stop-color="#1b8b66"/>
+      <stop offset="100%" stop-color="#006241"/>
+    </radialGradient>
+  </defs>
+  <circle cx="256" cy="256" r="250" fill="#ffffff"/>
+  <circle cx="256" cy="256" r="226" fill="url(#g)"/>
+  <circle cx="256" cy="256" r="190" fill="none" stroke="#ffffff" stroke-width="10" opacity="0.9"/>
+  <text x="256" y="132" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700" fill="#ffffff" letter-spacing="4">STARBUCKS</text>
+  <text x="256" y="388" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700" fill="#ffffff" letter-spacing="4">COFFEE</text>
+  <polygon points="256,178 268,214 306,214 275,236 287,272 256,250 225,272 237,236 206,214 244,214" fill="#ffffff"/>
+  <circle cx="256" cy="256" r="76" fill="none" stroke="#ffffff" stroke-width="10" opacity="0.95"/>
+  <path d="M256 210c16 0 30 12 30 30 0 12-6 22-16 27l16 35h-20l-12-29h-12v29h-19v-92h33Zm-2 17h-14v29h14c9 0 15-6 15-15s-6-14-15-14Z" fill="#ffffff" opacity="0.95"/>
+</svg>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Register - Laya Voucher</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="auth-page auth-page-compact">
+  <div class="container auth-shell auth-shell-compact">
+    <section class="auth-card auth-card-compact auth-card-register-single">
+      <div class="auth-card-glow"></div>
+      <div class="auth-card-header compact-center">
+        <span class="soft-badge">Register</span>
+        <h1 class="auth-title compact-title">สมัครสมาชิกใหม่</h1>
+        <p class="auth-subtitle compact-subtitle">สร้างบัญชีด้วยรหัสพนักงานจริง บัญชีใหม่จะเริ่มต้นเป็น <strong>staff</strong> และให้ผู้ดูแลระบบปรับสิทธิ์ภายหลัง</p>
+      </div>
+
+      <div class="auth-form auth-form-compact">
+        <div class="field-group">
+          <label for="employeeId">รหัสพนักงาน</label>
+          <input id="employeeId" type="text" placeholder="เช่น FB001 หรือ 300204" autocomplete="username" />
+        </div>
+
+        <div class="field-group">
+          <label for="name">ชื่อพนักงาน</label>
+          <input id="name" type="text" placeholder="ชื่อ - นามสกุล" autocomplete="name" />
+        </div>
+
+        <div class="field-row two-col">
+          <div class="field-group">
+            <label for="password">รหัสผ่าน</label>
+            <input id="password" type="password" placeholder="อย่างน้อย 6 ตัวอักษร" autocomplete="new-password" />
+          </div>
+
+          <div class="field-group">
+            <label for="confirmPassword">ยืนยันรหัสผ่าน</label>
+            <input id="confirmPassword" type="password" placeholder="กรอกรหัสผ่านอีกครั้ง" autocomplete="new-password" />
+          </div>
+        </div>
+
+        <button id="registerBtn">Create Account</button>
+        <p id="msg"></p>
+      </div>
+
+      <div class="auth-note auth-note-soft">
+        <strong>ตัดช่องแผนกและ Outlet ออกแล้ว</strong>
+        <span>โปรไฟล์ผู้สมัครใหม่จะถูกสร้างแบบพื้นฐานก่อน และผู้ดูแลระบบสามารถเข้าไปกำหนด <b>role</b>, <b>department</b> และ <b>outlet</b> ภายหลังได้จากหน้า Admin</span>
+      </div>
+
+      <div class="auth-bottom-row auth-bottom-center">
+        <span class="auth-bottom-text">มีบัญชีอยู่แล้ว?</span>
+        <a class="auth-inline-link" href="login.html">กลับไปหน้า Login</a>
+      </div>
+    </section>
+  </div>
+
+  <script type="module">
+    import { auth, db } from "./firebase-config.js";
+    import {
+      createUserWithEmailAndPassword,
+      updateProfile,
+      signOut
+    } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+    import {
+      doc,
+      getDoc,
+      setDoc,
+      serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+
+    const employeeIdEl = document.getElementById("employeeId");
+    const nameEl = document.getElementById("name");
+    const passwordEl = document.getElementById("password");
+    const confirmPasswordEl = document.getElementById("confirmPassword");
+    const registerBtn = document.getElementById("registerBtn");
+    const msg = document.getElementById("msg");
+
+    function makeInternalEmail(employeeId) {
+      return `${employeeId.toLowerCase()}@laya-voucher.local`;
+    }
+
+    async function employeeIdExists(employeeId) {
+      const ref = doc(db, "employee_login_index", employeeId);
+      const snap = await getDoc(ref);
+      return snap.exists();
+    }
+
+    registerBtn.addEventListener("click", async () => {
+      const employeeId = employeeIdEl.value.trim().toUpperCase();
+      const name = nameEl.value.trim();
+      const password = passwordEl.value;
+      const confirmPassword = confirmPasswordEl.value;
+      const email = makeInternalEmail(employeeId);
+
+      if (!employeeId || !name || !password || !confirmPassword) {
+        msg.textContent = "กรุณากรอกข้อมูลให้ครบ";
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        msg.textContent = "รหัสผ่านไม่ตรงกัน";
+        return;
+      }
+
+      if (password.length < 6) {
+        msg.textContent = "รหัสผ่านต้องอย่างน้อย 6 ตัว";
+        return;
+      }
+
+      msg.textContent = "กำลังสร้างบัญชี...";
+
+      try {
+        const exists = await employeeIdExists(employeeId);
+        if (exists) {
+          msg.textContent = "รหัสพนักงานนี้ถูกใช้แล้ว";
+          return;
+        }
+
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        const uid = cred.user.uid;
+
+        try {
+          await updateProfile(cred.user, { displayName: name });
+        } catch {}
+
+        await setDoc(doc(db, "users", uid), {
+          employee_id: employeeId,
+          name,
+          email,
+          role: "staff",
+          department: "",
+          outlet: "",
+          active: true,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp()
+        });
+
+        await setDoc(doc(db, "employee_login_index", employeeId), {
+          email,
+          active: true,
+          uid,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp()
+        });
+
+        try {
+          await signOut(auth);
+        } catch {}
+
+        msg.textContent = "สมัครสมาชิกสำเร็จ กำลังพาไปหน้า Login...";
+        setTimeout(() => {
+          window.location.href = "login.html";
+        }, 1200);
+      } catch (err) {
+        msg.textContent = "สมัครสมาชิกไม่สำเร็จ: " + err.message;
+      }
+    });
+  </script>
+</body>
+</html>

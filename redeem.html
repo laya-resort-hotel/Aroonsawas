@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redeem Card</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+<body class="app-page">
+  <div class="container app-shell">
+    <section class="page-header">
+      <div class="page-header-row">
+        <div>
+          <span class="soft-badge">Outlet Use</span>
+          <h1>Redeem Card</h1>
+          <p class="page-subtitle">สแกน QR จากการ์ดแข็งหรือพิมพ์ Voucher Code เพื่อตรวจสอบสถานะและยืนยันการใช้สิทธิ์</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="card section-card">
+      <h2>Redeem Checkpoint</h2>
+      <p class="page-subtitle">QR บนการ์ดควร encode เป็น Voucher Code ถาวรของการ์ดแต่ละใบ</p>
+      <div style="height:10px"></div>
+      <input id="voucherInput" type="text" placeholder="ใส่ Voucher Code หรือ Card Label" />
+      <div class="inline-actions">
+        <button id="checkBtn">Check</button>
+        <button id="startScanBtn" type="button">Start QR Scan</button>
+        <button id="stopScanBtn" type="button" class="button-secondary">Stop Scan</button>
+      </div>
+      <p class="ref">หมายเหตุ: การสแกนด้วยกล้องต้องเปิดผ่าน HTTPS และกดอนุญาตใช้กล้องในเบราว์เซอร์</p>
+    </div>
+
+    <div id="reader" class="card section-card hidden"></div>
+    <div id="voucherBox" class="card section-card hidden result-highlight"></div>
+    <div class="nav no-print" id="navMenu"></div>
+  </div>
+
+  <script type="module">
+    import { db } from "./firebase-config.js";
+    import { requireRole, renderNav } from "./auth-guard.js";
+    import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, addDoc } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+
+    const { user, profile } = await requireRole(["staff", "supervisor", "manager", "admin"]);
+    renderNav(profile);
+
+    const voucherInput = document.getElementById("voucherInput");
+    const checkBtn = document.getElementById("checkBtn");
+    const startScanBtn = document.getElementById("startScanBtn");
+    const stopScanBtn = document.getElementById("stopScanBtn");
+    const voucherBox = document.getElementById("voucherBox");
+    const reader = document.getElementById("reader");
+
+    let currentDocId = null;
+    let currentData = null;
+    let scanner = null;
+    let scannerRunning = false;
+    let scanBusy = false;
+    let currentCameraId = null;
+
+    function toDate(value) {
+      if (!value) return null;
+      try { return value.toDate ? value.toDate() : new Date(value); } catch { return null; }
+    }
+    function fmt(value) {
+      const d = toDate(value);
+      return d ? d.toLocaleString("th-TH") : "-";
+    }
+    function statusLabel(data) {
+      if (!data) return "-";
+      if (data.status === "issued") return "Available";
+      if (data.status === "redeemed") return "Used";
+      if (data.status === "disabled") return "Disabled";
+      return data.status || "-";
+    }
+
+    function showCameraError(err) {
+      const raw = String(err?.message || err || "Unknown camera error");
+      const lower = raw.toLowerCase();
+      let friendly = raw;
+      if (!window.isSecureContext) {
+        friendly = "ต้องเปิดเว็บผ่าน HTTPS ก่อน จึงจะใช้กล้องได้";
+      } else if (lower.includes("permission") || lower.includes("notallowed") || lower.includes("denied")) {
+        friendly = "เบราว์เซอร์ยังไม่ได้รับสิทธิ์ใช้กล้อง กรุณากดอนุญาตกล้อง แล้วลองใหม่อีกครั้ง";
+      } else if (lower.includes("notfound") || lower.includes("no camera") || lower.includes("camera not found")) {
+        friendly = "ไม่พบกล้องในอุปกรณ์นี้";
+      } else if (lower.includes("notreadable") || lower.includes("trackstart") || lower.includes("could not start") || lower.includes("in use")) {
+        friendly = "กล้องอาจถูกใช้งานโดยแอปอื่นอยู่ กรุณาปิดแอปกล้องหรือรีเฟรชหน้าแล้วลองใหม่";
+      } else if (lower.includes("overconstrained") || lower.includes("constraints")) {
+        friendly = "อุปกรณ์นี้ไม่รองรับโหมดกล้องที่ขอ ระบบจะพยายามสลับกล้องให้อัตโนมัติ";
+      }
+      voucherBox.classList.remove("hidden");
+      voucherBox.innerHTML = `<p class="error">เปิดกล้องไม่สำเร็จ: ${friendly}</p>`;
+    }
+
+    function isIOSDevice() {
+      return /iPad|iPhone|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    }
+
+    function pickBestCamera(cameras) {
+      if (!Array.isArray(cameras) || !cameras.length) return null;
+      const score = (camera = {}, index = 0, total = cameras.length) => {
+        const s = String(camera.label || "").toLowerCase();
+        let n = 0;
+        if (/(back|rear|environment|world|traseira|trasera|arrière|후면|背面|後面)/i.test(s)) n += 100;
+        if (/(wide|ultra|main|1x|default)/i.test(s)) n += 25;
+        if (/(front|user|face|facetime|selfie)/i.test(s)) n -= 90;
+        if (isIOSDevice() && !s && total > 1 && index === total - 1) n += 40;
+        if (isIOSDevice() && total > 1 && index === total - 1) n += 10;
+        return n;
+      };
+      return [...cameras]
+        .map((camera, index) => ({ camera, weight: score(camera, index) }))
+        .sort((a, b) => b.weight - a.weight)
+        .map((entry) => entry.camera)[0] || cameras[0];
+    }
+
+    async function stopScanner() {
+      try {
+        if (scanner && scannerRunning) {
+          await scanner.stop();
+        }
+      } catch (_) {}
+      try {
+        if (scanner) {
+          await scanner.clear();
+        }
+      } catch (_) {}
+      scannerRunning = false;
+      scanBusy = false;
+      scanner = null;
+      currentCameraId = null;
+      reader.classList.add("hidden");
+      reader.innerHTML = "";
+    }
+
+    async function startScanner() {
+      if (scannerRunning) return;
+      if (!window.isSecureContext) {
+        showCameraError(new Error("HTTPS required"));
+        return;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showCameraError(new Error("Camera API unavailable"));
+        return;
+      }
+
+      reader.classList.remove("hidden");
+      reader.innerHTML = "";
+      voucherBox.classList.remove("hidden");
+      voucherBox.innerHTML = `<p class="ref">กำลังเปิดกล้อง...</p>`;
+
+      try {
+        const warmup = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: isIOSDevice() ? { ideal: "environment" } : { exact: "environment" }
+          },
+          audio: false
+        });
+        warmup.getTracks().forEach((track) => track.stop());
+      } catch (err) {
+        try {
+          const fallbackWarmup = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          fallbackWarmup.getTracks().forEach((track) => track.stop());
+        } catch (fallbackErr) {
+          showCameraError(fallbackErr || err);
+          return;
+        }
+      }
+
+      try {
+        const cameras = await Html5Qrcode.getCameras();
+        const preferred = pickBestCamera(cameras);
+        currentCameraId = preferred?.id || null;
+      } catch (_) {
+        currentCameraId = null;
+      }
+
+      scanner = new Html5Qrcode("reader");
+      const config = { fps: 10, qrbox: { width: 240, height: 240 }, aspectRatio: 1.333334, disableFlip: true };
+
+      const onSuccess = async (decodedText) => {
+        if (scanBusy) return;
+        scanBusy = true;
+        voucherInput.value = decodedText;
+        await stopScanner();
+        await loadVoucherByInput(decodedText);
+      };
+
+      try {
+        if (currentCameraId) {
+          await scanner.start(currentCameraId, config, onSuccess, () => {});
+        } else {
+          await scanner.start({ facingMode: { exact: "environment" } }, config, onSuccess, () => {});
+        }
+        scannerRunning = true;
+        voucherBox.innerHTML = `<p class="success">กล้องหลังพร้อมสแกนแล้ว กรุณาเล็ง QR ให้อยู่ในกรอบ</p>`;
+      } catch (err) {
+        try {
+          await stopScanner();
+          scanner = new Html5Qrcode("reader");
+          if (currentCameraId) {
+            await scanner.start(currentCameraId, config, onSuccess, () => {});
+          } else {
+            await scanner.start({ facingMode: { ideal: "environment" } }, config, onSuccess, () => {});
+          }
+          scannerRunning = true;
+          voucherBox.innerHTML = `<p class="success">กล้องพร้อมสแกนแล้ว กรุณาเล็ง QR ให้อยู่ในกรอบ</p>`;
+          return;
+        } catch (fallbackErr) {
+          try {
+            await stopScanner();
+            scanner = new Html5Qrcode("reader");
+            await scanner.start({ facingMode: "environment" }, config, onSuccess, () => {});
+            scannerRunning = true;
+            voucherBox.innerHTML = `<p class="success">กล้องพร้อมสแกนแล้ว กรุณาเล็ง QR ให้อยู่ในกรอบ</p>`;
+            return;
+          } catch (finalErr) {
+            await stopScanner();
+            showCameraError(finalErr || fallbackErr || err);
+          }
+        }
+      }
+    }
+    function sameOutletForStaff(data) {
+      if (profile.role !== "staff") return true;
+      if (!profile.outlet) return true;
+      return (data.outlet || "") === (profile.outlet || "");
+    }
+
+    async function findByInput(keyword) {
+      const codeQ = query(collection(db, "vouchers"), where("voucher_code", "==", keyword));
+      const codeSnap = await getDocs(codeQ);
+      if (!codeSnap.empty) return codeSnap.docs[0];
+      const labelQ = query(collection(db, "vouchers"), where("card_label", "==", keyword));
+      const labelSnap = await getDocs(labelQ);
+      return labelSnap.empty ? null : labelSnap.docs[0];
+    }
+
+    async function loadVoucherByInput(rawInput) {
+      const keyword = rawInput.trim();
+      voucherBox.classList.remove("hidden");
+      voucherBox.innerHTML = "กำลังตรวจสอบ...";
+
+      const found = await findByInput(keyword);
+      if (!found) {
+        currentDocId = null;
+        currentData = null;
+        voucherBox.innerHTML = `<p class="error">ไม่พบการ์ดนี้ในระบบ</p>`;
+        return;
+      }
+
+      currentDocId = found.id;
+      currentData = found.data();
+
+      if ((currentData.voucher_mode || "") !== "reusable_card") {
+        voucherBox.innerHTML = `<p class="error">รายการนี้ไม่ใช่ Reusable Card Mode</p>`;
+        return;
+      }
+
+      const canRedeem = currentData.status === "issued" && sameOutletForStaff(currentData);
+      let hint = "พร้อมใช้";
+      if (currentData.status === "redeemed") hint = "การ์ดนี้ถูกใช้แล้ว รอ Front Desk reset";
+      else if (currentData.status === "disabled") hint = "การ์ดนี้ถูกปิดใช้งาน";
+      else if (!sameOutletForStaff(currentData)) hint = "บัญชี staff นี้ไม่อยู่ใน outlet ที่อนุญาต";
+
+      voucherBox.innerHTML = `
+        <h2>${currentData.card_label || currentData.voucher_code || "-"}</h2>
+        <p><strong>Voucher Code:</strong> ${currentData.voucher_code || "-"}</p>
+        <p><strong>Card Group:</strong> ${currentData.card_group || "-"}</p>
+        <p><strong>Outlet:</strong> ${currentData.outlet || "-"}</p>
+        <p><strong>Status:</strong> ${statusLabel(currentData)}</p>
+        <p><strong>Last Redeemed:</strong> ${fmt(currentData.redeemed_at)}</p>
+        <p><strong>Reset Count:</strong> ${currentData.reset_count || 0}</p>
+        <p class="ref">${hint}</p>
+        ${canRedeem ? `<button id="redeemBtn">Confirm Redeem</button>` : `<p class="error">การ์ดนี้ยังไม่สามารถ Redeem ได้</p>`}
+      `;
+
+      const redeemBtn = document.getElementById("redeemBtn");
+      if (redeemBtn) redeemBtn.addEventListener("click", redeemVoucher);
+    }
+
+    async function redeemVoucher() {
+      if (!currentDocId || !currentData) return;
+      const ok = confirm(`ยืนยันใช้การ์ด ${currentData.card_label || currentData.voucher_code}?`);
+      if (!ok) return;
+      try {
+        const ref = doc(db, "vouchers", currentDocId);
+        await runTransaction(db, async (transaction) => {
+          const snap = await transaction.get(ref);
+          if (!snap.exists()) throw new Error("ไม่พบการ์ดในระบบ");
+          const latest = snap.data();
+          if ((latest.voucher_mode || "") !== "reusable_card") throw new Error("รายการนี้ไม่ใช่โหมดการ์ดถาวร");
+          if (latest.status !== "issued") throw new Error("การ์ดนี้ถูกใช้แล้วหรือถูกปิดใช้งานอยู่");
+          if (profile.role === "staff" && profile.outlet && latest.outlet !== profile.outlet) throw new Error("บัญชีนี้ไม่มีสิทธิ์ใช้การ์ดของ outlet นี้");
+          transaction.update(ref, {
+            status: "redeemed",
+            redeemed_at: serverTimestamp(),
+            redeemed_by_uid: user.uid,
+            redeemed_by_name: profile.name || profile.employee_id || "",
+            updated_at: serverTimestamp()
+          });
+        });
+
+        await addDoc(collection(db, "voucher_logs"), {
+          voucher_code: currentData.voucher_code || "",
+          voucher_ref: currentData.internal_no || "",
+          action: "redeemed",
+          action_at: serverTimestamp(),
+          action_by_uid: user.uid,
+          action_by_name: profile.name || profile.employee_id || "",
+          action_by_role: profile.role,
+          department: currentData.department || "",
+          outlet: currentData.outlet || "",
+          note: `Redeemed reusable card ${currentData.card_label || currentData.voucher_code}`
+        });
+
+        voucherBox.innerHTML = `<h2>${currentData.card_label || currentData.voucher_code}</h2><p class="success">Redeemed สำเร็จแล้ว</p><p class="ref">รอ Front Desk รับการ์ดคืนและกด Reuse เพื่อเปิดใช้งานรอบถัดไป</p>`;
+      } catch (err) {
+        voucherBox.innerHTML = `<p class="error">Redeem ไม่สำเร็จ: ${err.message}</p>`;
+      }
+    }
+
+    checkBtn.addEventListener("click", async () => {
+      const value = voucherInput.value.trim();
+      if (!value) return alert("กรุณาใส่ Voucher Code หรือ Card Label");
+      try { await loadVoucherByInput(value); }
+      catch (err) {
+        voucherBox.classList.remove("hidden");
+        voucherBox.innerHTML = `<p class="error">${err.message}</p>`;
+      }
+    });
+
+    startScanBtn.addEventListener("click", async () => {
+      await startScanner();
+    });
+
+    stopScanBtn.addEventListener("click", async () => {
+      await stopScanner();
+    });
+  </script>
+</body>
+</html>

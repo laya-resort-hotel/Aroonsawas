@@ -3,71 +3,141 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Laya Sales Voucher v6 - Auto Login</title>
+  <title>Login - Laya Voucher</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body class="login-body">
-  <div class="login-card">
-    <div class="login-header">
-      <h1>Laya Sales Voucher v6</h1>
-      <p>ระบบใหม่นี้ออกแบบให้เปิดจากปุ่ม <b>For Sales Voucher</b> ในเว็บเดิม แล้วเข้าสู่ระบบอัตโนมัติถ้ายังมี session อยู่</p>
-    </div>
-    <div class="notice" id="autoMessage">กำลังตรวจสอบ session จากระบบเดิม...</div>
-    <form id="loginForm" class="form-grid" style="margin-top:16px">
-      <div class="field half"><label>รหัสพนักงาน</label><input id="employeeId" autocomplete="username" placeholder="เช่น 300204 หรือ FB001" /></div>
-      <div class="field half"><label>รหัสผ่าน</label><input id="password" type="password" autocomplete="current-password" placeholder="กรอกรหัสผ่าน" /></div>
-      <div class="field"><div class="btn-row"><button class="btn primary" type="submit">Login สำรอง</button><button class="btn secondary" type="button" id="backBtn">Back to Free Voucher</button></div></div>
-      <div class="field"><div id="msg" class="helper"></div></div>
-    </form>
+<body class="auth-page auth-page-compact">
+  <div class="container auth-shell auth-shell-compact">
+    <section class="auth-card auth-card-compact auth-card-login-single">
+      <div class="auth-card-glow"></div>
+      <div class="auth-card-header compact-center">
+        <span class="brand-badge brand-badge-solid">Laya Resort Phuket</span>
+        <h1 class="auth-title compact-title">Laya Voucher System</h1>
+        <p class="auth-subtitle compact-subtitle">เข้าสู่ระบบด้วยรหัสพนักงานและรหัสผ่าน เพื่อใช้งานระบบ Voucher ตามสิทธิ์ของคุณ</p>
+      </div>
+
+      <div class="auth-highlight-strip">
+        <span>Secure Login</span>
+        <span>Fast Redeem</span>
+        <span>Role-Based Access</span>
+      </div>
+
+      <div class="auth-form auth-form-compact">
+        <div class="field-group">
+          <label for="employeeId">รหัสพนักงาน</label>
+          <input id="employeeId" type="text" placeholder="เช่น 300204 หรือ FB001" autocomplete="username" />
+        </div>
+
+        <div class="field-group">
+          <label for="password">รหัสผ่าน</label>
+          <input id="password" type="password" placeholder="กรอกรหัสผ่าน" autocomplete="current-password" />
+        </div>
+
+        <button id="loginBtn">เข้าสู่ระบบ</button>
+        <p id="msg"></p>
+      </div>
+
+      <div class="auth-note auth-note-soft">
+        <strong>การใช้งานตามสิทธิ์</strong>
+        <span>บัญชีที่สมัครใหม่จะเริ่มต้นเป็น <b>staff</b> และสามารถใช้งานหน้า <b>Redeem</b> ได้ทันที ส่วนสิทธิ์อื่นให้ผู้ดูแลระบบปรับเพิ่มภายหลัง</span>
+      </div>
+
+      <div class="auth-divider-text"><span>พร้อมเริ่มใช้งานในหน้างาน</span></div>
+
+      <div class="auth-feature-list">
+        <div class="auth-feature-item">
+          <strong>Redeem ได้เร็ว</strong>
+          <span>เหมาะกับพนักงานหน้างาน ใช้งานง่าย ไม่ซับซ้อน</span>
+        </div>
+        <div class="auth-feature-item">
+          <strong>ตรวจสอบสิทธิ์ชัดเจน</strong>
+          <span>แยกการมองเห็นและการทำงานตาม role อัตโนมัติ</span>
+        </div>
+      </div>
+
+      <div class="auth-bottom-row auth-bottom-center">
+        <span class="auth-bottom-text">ยังไม่มีบัญชี?</span>
+        <a class="auth-inline-link" href="register.html">สมัครสมาชิกใหม่</a>
+      </div>
+    </section>
   </div>
 
   <script type="module">
-    import { auth, appConfig } from './firebase-config.js';
-    import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js';
-    import { getHomeByRole } from './auth-guard.js';
-    import { signInByEmployeeId } from './app.js';
-    import { db, legacyCollections } from './firebase-config.js';
-    import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js';
+    import { auth, db } from "./firebase-config.js";
+    import {
+      signInWithEmailAndPassword,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+    import {
+      doc,
+      getDoc
+    } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+    import { getHomeByRole } from "./auth-guard.js";
 
-    const autoMessage = document.getElementById('autoMessage');
-    const msg = document.getElementById('msg');
-    const backBtn = document.getElementById('backBtn');
-    const loginForm = document.getElementById('loginForm');
+    const employeeIdEl = document.getElementById("employeeId");
+    const passwordEl = document.getElementById("password");
+    const loginBtn = document.getElementById("loginBtn");
+    const msg = document.getElementById("msg");
 
-    backBtn.onclick = () => window.open(appConfig.backToFreeVoucherUrl, '_blank', 'noopener,noreferrer');
+    async function findLoginIndex(employeeId) {
+      const ref = doc(db, "employee_login_index", employeeId);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return null;
+      return snap.data();
+    }
 
     onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        autoMessage.textContent = 'ไม่พบ session เดิม สามารถใช้ Login สำรองด้านล่างได้';
+      if (!user) return;
+
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) {
+        msg.textContent = "ไม่พบบัญชีพนักงานในระบบ";
         return;
       }
-      autoMessage.textContent = 'พบ session เดิมแล้ว กำลังพาเข้าสู่ระบบ...';
-      try {
-        const snap = await getDoc(doc(db, legacyCollections.users, user.uid));
-        if (!snap.exists()) {
-          msg.textContent = 'ไม่พบบัญชีพนักงานในระบบ';
-          return;
-        }
-        const profile = snap.data();
-        if (!profile.active) {
-          msg.textContent = 'บัญชีนี้ถูกปิดการใช้งาน';
-          return;
-        }
-        location.href = getHomeByRole(profile);
-      } catch (err) {
-        msg.textContent = 'ตรวจสอบ session ไม่สำเร็จ: ' + err.message;
+
+      const profile = userSnap.data();
+      if (!profile.active) {
+        msg.textContent = "บัญชีนี้ถูกปิดการใช้งาน";
+        return;
       }
+
+      window.location.href = getHomeByRole(profile);
     });
 
-    const employeeIdEl = document.getElementById('employeeId');
-    const passwordEl = document.getElementById('password');
-    loginForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      msg.textContent = 'กำลังเข้าสู่ระบบ...';
+    loginBtn.addEventListener("click", async () => {
+      const employeeId = employeeIdEl.value.trim().toUpperCase();
+      const password = passwordEl.value.trim();
+
+      if (!employeeId || !password) {
+        msg.textContent = "กรุณากรอกรหัสพนักงานและรหัสผ่าน";
+        return;
+      }
+
+      msg.textContent = "กำลังเข้าสู่ระบบ...";
+
       try {
-        await signInByEmployeeId(employeeIdEl.value, passwordEl.value);
+        const loginIndex = await findLoginIndex(employeeId);
+
+        if (!loginIndex) {
+          msg.textContent = "ไม่พบรหัสพนักงานนี้ในระบบ";
+          return;
+        }
+
+        if (!loginIndex.active) {
+          msg.textContent = "บัญชีนี้ถูกปิดการใช้งาน";
+          return;
+        }
+
+        if (!loginIndex.email) {
+          msg.textContent = "บัญชีนี้ยังไม่ได้ผูกอีเมล";
+          return;
+        }
+
+        await signInWithEmailAndPassword(auth, loginIndex.email, password);
       } catch (err) {
-        msg.textContent = err.message || 'Login ไม่สำเร็จ';
+        msg.textContent = "Login ไม่สำเร็จ: " + err.message;
       }
     });
   </script>
