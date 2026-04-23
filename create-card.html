@@ -48,13 +48,21 @@
             <label>Card Serial</label>
             <input id="card_serial" placeholder="เช่น AR-SV-2026-600-B01-0001">
           </div>
+          <div class="field half">
+            <label>Voucher Package</label>
+            <select id="voucher_plan">
+              <option value="500_600" selected>Buy THB 500 = THB 600</option>
+              <option value="1000_1200">Buy THB 1,000 = THB 1,200</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
           <div class="field quarter">
             <label>Face Value</label>
             <input id="face_value" type="number" min="1" value="600" required>
           </div>
           <div class="field quarter">
             <label>Sold Price</label>
-            <input id="sold_price" type="number" min="1" value="490" required>
+            <input id="sold_price" type="number" min="1" value="500" required>
           </div>
           <div class="field half">
             <label>Outlet Scope</label>
@@ -101,6 +109,7 @@
   const cardCode = document.getElementById('card_code');
   const cardLabel = document.getElementById('card_label');
   const cardSerial = document.getElementById('card_serial');
+  const voucherPlan = document.getElementById('voucher_plan');
   const faceValue = document.getElementById('face_value');
   const soldPrice = document.getElementById('sold_price');
   const outletScope = document.getElementById('outlet_scope');
@@ -116,6 +125,18 @@
   let qrReady = false;
   let previewRun = 0;
   let cardsCache = [];
+  function applyPlanPreset() {
+    if (!voucherPlan) return;
+    if (voucherPlan.value === '500_600') {
+      soldPrice.value = '500';
+      faceValue.value = '600';
+    } else if (voucherPlan.value === '1000_1200') {
+      soldPrice.value = '1000';
+      faceValue.value = '1200';
+    }
+    if (autoCode.checked) applyAutoCode();
+  }
+
 
   function sanitizeBatch(v = '') {
     const cleaned = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
@@ -175,6 +196,7 @@
       <div class="stat-line"><span>Card Code</span><strong>${escapeHtml(code || '-')}</strong></div>
       <div class="stat-line"><span>Card Label</span><strong>${escapeHtml(cardLabel.value || '-')}</strong></div>
       <div class="stat-line"><span>Card Serial</span><strong>${escapeHtml(cardSerial.value || '-')}</strong></div>
+      <div class="stat-line"><span>Package</span><strong>${escapeHtml(voucherPlan.value === '500_600' ? 'Buy THB 500 = THB 600' : voucherPlan.value === '1000_1200' ? 'Buy THB 1,000 = THB 1,200' : 'Custom')}</strong></div>
       <div class="stat-line"><span>Face Value</span><strong>${formatMoney(faceValue.value || 0)}</strong></div>
       <div class="stat-line"><span>Sold Price</span><strong>${formatMoney(soldPrice.value || 0)}</strong></div>
       <div class="stat-line"><span>Batch</span><strong>${escapeHtml(sanitizeBatch(batchNo.value))}</strong></div>
@@ -303,6 +325,7 @@
   clearBtn.addEventListener('click', clearForm);
 
   await refreshCardsCache();
+  applyPlanPreset();
   syncReadOnlyState();
   await renderPreview();
 </script>
