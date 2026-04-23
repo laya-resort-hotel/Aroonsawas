@@ -2,12 +2,122 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="refresh" content="0; url=login.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Laya Voucher</title>
-  <script>window.location.replace("login.html");</script>
+  <title>Home</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <p>กำลังพาไปหน้า Login... <a href="login.html">กดที่นี่ถ้าไม่เปลี่ยนหน้า</a></p>
+<div id="app"></div>
+<script type="module">
+  import { auth, db, legacyCollections } from './firebase-config.js';
+  import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js';
+  import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js';
+  import { mountShell, roleCan, getHomeByRole, buildLoginUrl } from './auth-guard.js';
+  import { signInByEmployeeId, escapeHtml } from './app.js';
+
+  const app = document.getElementById('app');
+  const params = new URLSearchParams(location.search);
+  const nextParam = params.get('next') || '';
+
+  function normalizeNextPath(raw) {
+    if (!raw) return '';
+    try {
+      const url = new URL(raw, location.href);
+      if (url.origin !== location.origin) return '';
+      const path = `${url.pathname.split('/').pop() || 'index.html'}${url.search}${url.hash}`;
+      if (/^javascript:/i.test(path)) return '';
+      return path;
+    } catch {
+      return '';
+    }
+  }
+
+  function renderLogin(message = '') {
+    document.body.classList.add('login-body');
+    app.innerHTML = `
+      <div class="login-card">
+        <div class="login-header">
+          <h1>Laya Sales Voucher v6</h1>
+          <p>เข้าสู่ระบบในหน้านี้ได้เลย ไม่ต้องเด้งไปหน้าอื่นก่อน</p>
+        </div>
+        <div class="notice" id="autoMessage">${escapeHtml(message || 'กรุณาเข้าสู่ระบบเพื่อใช้งาน Sales Voucher')}</div>
+        <form id="loginForm" class="form-grid" style="margin-top:16px">
+          <div class="field half"><label>รหัสพนักงาน</label><input id="employeeId" autocomplete="username" placeholder="เช่น 300204 หรือ FB001" /></div>
+          <div class="field half"><label>รหัสผ่าน</label><input id="password" type="password" autocomplete="current-password" placeholder="กรอกรหัสผ่าน" /></div>
+          <div class="field"><div class="btn-row"><button class="btn primary" type="submit">Login</button></div></div>
+          <div class="field"><div id="msg" class="helper"></div></div>
+        </form>
+      </div>`;
+
+    const loginForm = document.getElementById('loginForm');
+    const msg = document.getElementById('msg');
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.textContent = 'กำลังเข้าสู่ระบบ...';
+      try {
+        await signInByEmployeeId(document.getElementById('employeeId').value, document.getElementById('password').value);
+        msg.textContent = 'เข้าสู่ระบบสำเร็จ กำลังพาเข้าเมนู...';
+      } catch (err) {
+        msg.textContent = err.message || 'Login ไม่สำเร็จ';
+      }
+    });
+  }
+
+  async function renderHome() {
+    document.body.classList.remove('login-body');
+    const ctx = await mountShell('index.html','Home','โมดูลใหม่สำหรับบัตรขายมูลค่า แยกจาก Free Voucher เดิมอย่างชัดเจน');
+    if (!ctx) return;
+    const { profile } = ctx;
+    const tiles = [
+      ['dashboard.html','Dashboard','สรุปยอดขาย ยอดใช้ และยอดคงเหลือ','📊','dashboard'],
+      ['create-card.html','Create Card','สร้างบัตรใหม่เข้าระบบในสถานะ draft','🪪','create'],
+      ['sell-card.html','Sell Card','เปิดใช้งานและบันทึกการขายจริง','💳','sell'],
+      ['scan-deduct.html','Scan / Deduct','สแกน QR แล้วตัดยอดคงเหลือ','📷','scan'],
+      ['check-balance.html','Check Balance','เช็กยอดคงเหลือโดยไม่ตัดยอด','🔎','balance'],
+      ['search-card.html','Search Card','ค้นหาบัตร ดูสถานะ และเปิดรายละเอียด','🗂️','search'],
+      ['transactions.html','Transactions','ตรวจสอบรายการ sale / debit ย้อนหลัง','🧾','transactions'],
+      ['settings.html','Settings','ตั้งค่า outlet, validity และ URL กลับไประบบเดิม','⚙️','settings'],
+      ['admin-users.html','Users','อ่านรายชื่อผู้ใช้จากระบบเดิมเพื่อดู role ปัจจุบัน','👥','users']
+    ].filter(([, , , , feature]) => roleCan(profile.role, feature));
+    document.getElementById('pageContent').innerHTML = `<div class="tile-grid">${tiles.map(([href,title,desc,icon]) => `<a class="tile" href="${href}"><div class="icon">${icon}</div><h3>${title}</h3><p class="helper">${desc}</p></a>`).join('')}</div>`;
+  }
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      renderLogin('กรุณาเข้าสู่ระบบเพื่อใช้งาน Sales Voucher');
+      return;
+    }
+    try {
+      const snap = await getDoc(doc(db, legacyCollections.users, user.uid));
+      if (!snap.exists()) {
+        renderLogin('ไม่พบบัญชีพนักงานในระบบ กรุณาลองใหม่');
+        return;
+      }
+      const profile = snap.data();
+      if (!profile.active) {
+        renderLogin('บัญชีนี้ถูกปิดการใช้งาน');
+        return;
+      }
+      const nextPath = normalizeNextPath(nextParam);
+      if (nextPath && nextPath !== 'index.html') {
+        location.replace(nextPath);
+        return;
+      }
+      const home = getHomeByRole(profile);
+      if (home !== 'index.html') {
+        location.replace(home);
+        return;
+      }
+      await renderHome();
+    } catch (err) {
+      renderLogin(err.message || 'เข้าสู่ระบบไม่สำเร็จ');
+    }
+  });
+
+  // Support direct visits to legacy login.html redirecting here.
+  if (location.pathname.endsWith('/login.html')) {
+    location.replace(buildLoginUrl(nextParam || 'index.html'));
+  }
+</script>
 </body>
 </html>

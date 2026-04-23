@@ -36,18 +36,13 @@ export function roleCan(role, feature) {
   return (PERMISSIONS[role] || []).includes(feature);
 }
 
-export function buildLoginUrl(nextPath = "") {
-  const rawNext = nextPath || `${location.pathname.split('/').pop() || 'index.html'}${location.search || ''}${location.hash || ''}`;
-  return `index.html?login=1&next=${encodeURIComponent(rawNext)}`;
-}
-
 export function getHomeByRole(profile) {
   const role = profile?.role;
-  if (!role) return buildLoginUrl();
+  if (!role) return "login.html";
   if (roleCan(role, 'home')) return 'index.html';
   if (roleCan(role, 'scan')) return 'scan-deduct.html';
   if (roleCan(role, 'balance')) return 'check-balance.html';
-  return buildLoginUrl();
+  return 'login.html';
 }
 
 async function fetchProfile(user) {
@@ -80,7 +75,7 @@ export async function requireRole(allowedRoles = []) {
   try {
     const ctx = await getAuthContext();
     if (!ctx) {
-      location.href = buildLoginUrl();
+      location.href = "login.html";
       return null;
     }
     if (allowedRoles.length && !allowedRoles.includes(ctx.profile.role)) {
@@ -92,7 +87,7 @@ export async function requireRole(allowedRoles = []) {
   } catch (err) {
     alert(err.message || "ตรวจสอบสิทธิ์ไม่สำเร็จ");
     try { await signOut(auth); } catch {}
-    location.href = buildLoginUrl();
+    location.href = "login.html";
     return null;
   }
 }
@@ -159,7 +154,7 @@ export async function mountShell(activePage, pageTitle, pageDesc) {
 
   document.getElementById("logoutBtn")?.addEventListener("click", async () => {
     await signOut(auth);
-    location.href = buildLoginUrl();
+    location.href = "login.html";
   });
   let freeVoucherUrl = appConfig.backToFreeVoucherUrl;
   try {

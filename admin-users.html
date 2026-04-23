@@ -1,97 +1,13 @@
 <!DOCTYPE html>
 <html lang="th">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin Users</title>
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body class="app-page">
-  <div class="container app-shell">
-    <section class="page-header"><div class="page-header-row"><div><span class="soft-badge">Admin Tools</span><h1>Admin User Profiles</h1><p class="page-subtitle">จัดการ role, department, outlet และสถานะ active ของผู้ใช้งานในระบบ</p></div></div></section>
-
-    <div class="card section-card">
-      <h2>User Profile Editor</h2>
-      <p class="page-subtitle">ใช้สำหรับโหลดและแก้ไขโปรไฟล์ผู้ใช้งานตาม UID ของ Firebase Auth</p>
-      <div style="height:10px"></div>
-      <input id="uid" placeholder="Firebase Auth UID" />
-      <input id="employeeId" placeholder="Employee ID เช่น FB001" />
-      <input id="name" placeholder="Full Name" />
-      <input id="email" type="email" placeholder="Email" />
-      <select id="role">
-        <option value="staff">staff</option>
-        <option value="supervisor">supervisor</option>
-        <option value="manager">manager</option>
-        <option value="admin">admin</option>
-      </select>
-      <select id="department">
-        <option value="FB">FB</option>
-        <option value="FO">FO</option>
-        <option value="SPA">SPA</option>
-      </select>
-      <input id="outlet" placeholder="Outlet เช่น The Taste" />
-      <label class="check-row"><input id="active" type="checkbox" checked /> Active</label>
-      <div class="inline-actions"><button id="saveBtn">Save Profile</button>
-      <button id="loadBtn" type="button">Load Profile</button></div>
-      <p id="msg"></p>
-    </div>
-
-    <div class="nav no-print" id="navMenu"></div>
-  </div>
-
-  <script type="module">
-    import { auth, db } from "./firebase-config.js";
-    import { requireRole, renderNav } from "./auth-guard.js";
-    import { doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
-
-    const { profile } = await requireRole(["admin"]);
-    renderNav(profile);
-
-    const uidEl = document.getElementById("uid");
-    const employeeIdEl = document.getElementById("employeeId");
-    const nameEl = document.getElementById("name");
-    const emailEl = document.getElementById("email");
-    const roleEl = document.getElementById("role");
-    const departmentEl = document.getElementById("department");
-    const outletEl = document.getElementById("outlet");
-    const activeEl = document.getElementById("active");
-    const saveBtn = document.getElementById("saveBtn");
-    const loadBtn = document.getElementById("loadBtn");
-    const msg = document.getElementById("msg");
-
-    loadBtn.addEventListener("click", async () => {
-      const uid = uidEl.value.trim();
-      if (!uid) return msg.textContent = "กรุณาใส่ UID";
-      const snap = await getDoc(doc(db, "users", uid));
-      if (!snap.exists()) return msg.textContent = "ยังไม่มี profile นี้";
-      const data = snap.data();
-      employeeIdEl.value = data.employee_id || "";
-      nameEl.value = data.name || "";
-      emailEl.value = data.email || "";
-      roleEl.value = data.role || "staff";
-      departmentEl.value = data.department || "FB";
-      outletEl.value = data.outlet || "";
-      activeEl.checked = !!data.active;
-      msg.textContent = "โหลดข้อมูลสำเร็จ";
-    });
-
-    saveBtn.addEventListener("click", async () => {
-      const uid = uidEl.value.trim();
-      if (!uid) return msg.textContent = "กรุณาใส่ UID";
-      await setDoc(doc(db, "users", uid), {
-        employee_id: employeeIdEl.value.trim().toUpperCase(),
-        name: nameEl.value.trim(),
-        email: emailEl.value.trim(),
-        role: roleEl.value,
-        department: departmentEl.value,
-        outlet: outletEl.value.trim(),
-        active: activeEl.checked,
-        updated_at: serverTimestamp(),
-        updated_by_uid: auth.currentUser.uid,
-        updated_by_name: profile.name || ""
-      }, { merge: true });
-      msg.textContent = "บันทึกโปรไฟล์สำเร็จ";
-    });
-  </script>
-</body>
-</html>
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Users</title><link rel="stylesheet" href="style.css" /></head>
+<body><div id="app"></div>
+<script type="module">
+  import { mountShell, roleCan } from './auth-guard.js';
+  import { listUsers, escapeHtml } from './app.js';
+  const ctx = await mountShell('admin-users.html','Users','อ่านรายชื่อผู้ใช้จาก collection เดิมเพื่อใช้ role เดิมร่วมกับ auto-login');
+  if (!ctx || !roleCan(ctx.profile.role, 'users')) location.href = 'index.html';
+  const users = await listUsers();
+  document.getElementById('pageContent').innerHTML = `<div class="card"><div class="table-wrap"><table><thead><tr><th>Employee ID</th><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Outlet</th><th>Status</th></tr></thead><tbody>${users.length ? users.map(u => `<tr><td>${escapeHtml(u.employee_id || '-')}</td><td>${escapeHtml(u.name || '-')}</td><td>${escapeHtml(u.email || '-')}</td><td>${escapeHtml(u.role || '-')}</td><td>${escapeHtml(u.department || '-')}</td><td>${escapeHtml(u.outlet || '-')}</td><td>${u.active ? 'Active' : 'Inactive'}</td></tr>`).join('') : '<tr><td colspan="7">No users found.</td></tr>'}</tbody></table></div><div class="footer-note">หน้านี้ยังอ่านจาก users collection เดิมเพื่อให้ role ตรงกับระบบเก่าและรองรับ auto-login ข้าม repo</div></div>`;
+</script>
+</body></html>

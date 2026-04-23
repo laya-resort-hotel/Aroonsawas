@@ -3,19 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Print Voucher</title>
+  <title>Print Card Template</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body><div id="app"></div>
 <script type="module">
   import { mountShell } from './auth-guard.js';
-  import { getCardById, getCardByCode, ensureQrCodeLib, escapeHtml, formatMoney } from './app.js';
-
-  const ctx = await mountShell('print-card-template.html','Print Voucher','พรีวิวบัตร Aroonsawat แบบหน้าหลังตามแพทเทิร์นจริง พร้อมพิมพ์หรือ Save as PDF');
+  import { getCardById, getCardByCode, ensureQrCodeLib, escapeHtml, formatMoney, toDateValue } from './app.js';
+  const ctx = await mountShell('print-card-template.html','Print Card Template','พรีวิวการ์ดจริง front/back และพร้อมพิมพ์หรือ Save as PDF');
   if (!ctx) throw new Error('auth required');
-
   const el = document.getElementById('pageContent');
-  el.innerHTML = `<div id="printToolbar" class="card no-print"><div class="btn-row"><button class="btn primary" id="printBtn" type="button">Print Voucher / Save PDF</button><a class="btn secondary" id="detailBtn" href="search-card.html">Back to Search</a></div><div id="printFeedback" class="helper" style="margin-top:8px">Loading voucher...</div></div><div id="printStage"></div>`;
+  el.innerHTML = `<div id="printToolbar" class="card no-print"><div class="btn-row"><button class="btn primary" id="printBtn" type="button">Print / Save PDF</button><a class="btn secondary" id="detailBtn" href="search-card.html">Back to Search</a></div><div id="printFeedback" class="helper" style="margin-top:8px">Loading card...</div></div><div id="printStage"></div>`;
 
   const params = new URLSearchParams(location.search);
   const id = params.get('id');
@@ -24,62 +22,79 @@
   const printFeedbackEl = document.getElementById('printFeedback');
   const detailBtnEl = document.getElementById('detailBtn');
 
-  function getVoucherSoldPrice(card) {
-    const soldPrice = Number(card?.sold_price || 0);
-    if (soldPrice > 0) return soldPrice;
-    const parsedCode = String(card?.card_code || '').match(/(\d{3,4})/);
-    if (parsedCode) return Number(parsedCode[1]);
-    return Number(card?.face_value || 500) || 500;
-  }
-
   async function render() {
     try {
       const card = id ? await getCardById(id) : await getCardByCode(code || '');
       if (!card) throw new Error('Card not found.');
       detailBtnEl.href = `card-detail.html?id=${encodeURIComponent(card.id)}`;
-
-      const soldPrice = getVoucherSoldPrice(card);
-      const soldPriceText = escapeHtml(formatMoney(soldPrice));
-      const frontImage = 'assets/print-voucher/aroonsawat-front-500.png';
-      const backImage = 'assets/print-voucher/aroonsawat-back-500.png';
-
+      await ensureQrCodeLib();
       printStageEl.innerHTML = `
-        <div class="voucher-print-stage">
-          <div class="voucher-print-grid">
-            <section class="voucher-panel">
-              <div class="voucher-side-label no-print">Front</div>
-              <div class="voucher-image-card voucher-image-card-front">
-                <img src="${frontImage}" alt="Aroonsawat voucher front" />
-                <div class="voucher-front-chip">
-                  <strong>${soldPriceText}</strong>
-                  <span>Voucher</span>
+        <div class="print-card-stage">
+          <div class="sale-card-mockup sale-card-mockup-clean">
+            <div class="sale-card-front sale-card-front-clean">
+              <div class="sale-card-border"></div>
+              <div class="sale-card-front-top">
+                <div>
+                  <div class="sale-card-brand">LAYA RESORT HOTEL</div>
+                  <div class="sale-card-subtitle">Sales Voucher</div>
+                </div>
+                <div class="sale-card-value-block">
+                  <div class="sale-card-currency">${escapeHtml((card.currency || 'THB'))}</div>
+                  <div class="sale-card-value">${escapeHtml(String(card.face_value || 0))}</div>
                 </div>
               </div>
-            </section>
-
-            <section class="voucher-panel">
-              <div class="voucher-side-label no-print">Back</div>
-              <div class="voucher-image-card voucher-image-card-back">
-                <img src="${backImage}" alt="Aroonsawat voucher back" />
-                <div class="voucher-qr-overlay">
-                  <div id="qrBack" class="voucher-qr-code"></div>
+              <div class="sale-card-front-main">
+                <div class="sale-card-qr-wrap sale-card-qr-wrap-clean"><div id="qrFront" class="sale-card-qr"></div></div>
+                <div class="sale-card-front-meta sale-card-front-meta-clean">
+                  <div class="sale-card-code-label">Card Code</div>
+                  <div class="sale-card-code-big">${escapeHtml(card.card_code || '-')}</div>
+                  <div class="sale-card-chip-grid">
+                    <div class="sale-card-chip"><span>Outlet</span><strong>${escapeHtml(card.outlet_scope || 'Aroonsawat')}</strong></div>
+                    <div class="sale-card-chip"><span>Valid Until</span><strong>${escapeHtml(toDateValue(card.valid_until) || 'Until fully redeemed')}</strong></div>
+                  </div>
                 </div>
               </div>
-            </section>
+              <div class="sale-card-footer sale-card-footer-clean">Redeemable only at ${escapeHtml(card.outlet_scope || 'Aroonsawat')}</div>
+            </div>
+            <div class="sale-card-back sale-card-back-clean">
+              <div class="sale-card-border"></div>
+              <div class="sale-card-back-header">
+                <div class="sale-card-back-title">Voucher Policy</div>
+                <div class="sale-card-back-sub">Issued by LAYA RESORT HOTEL</div>
+              </div>
+              <div class="sale-card-policy-grid">
+                <div class="sale-card-policy-box">
+                  <span>Valid Until</span>
+                  <strong>${escapeHtml(toDateValue(card.valid_until) || 'Until fully redeemed')}</strong>
+                </div>
+                <div class="sale-card-policy-box">
+                  <span>Outlet</span>
+                  <strong>${escapeHtml(card.outlet_scope || 'Aroonsawat')}</strong>
+                </div>
+              </div>
+              <div class="sale-card-terms-title">Terms &amp; Conditions</div>
+              <ul class="sale-card-terms sale-card-terms-clean">
+                <li>Present the QR code or card code before ordering.</li>
+                <li>Valid only for eligible menu purchases under hotel policy.</li>
+                <li>Cannot be combined with other promotions or discounts.</li>
+                <li>Non-refundable, non-transferable, and has no cash value.</li>
+              </ul>
+              <div class="sale-card-back-footer">
+                <div class="sale-card-note-small">Management reserves the right to amend these terms without prior notice.</div>
+                <div class="sale-card-serial">Serial: ${escapeHtml(card.card_serial || card.card_code || '-')}</div>
+              </div>
+            </div>
           </div>
         </div>`;
-
-      await ensureQrCodeLib();
-      new window.QRCode(document.getElementById('qrBack'), {
+      new window.QRCode(document.getElementById('qrFront'), {
         text: card.card_code || '',
-        width: 132,
-        height: 132,
+        width: 148,
+        height: 148,
         correctLevel: window.QRCode.CorrectLevel.H
       });
-
-      printFeedbackEl.textContent = `Ready to print ${card.card_code || 'voucher'} in Aroonsawat front/back style.`;
+      printFeedbackEl.textContent = `Ready to print ${card.card_code}.`;
     } catch (err) {
-      printStageEl.innerHTML = `<div class="card"><h3>Print voucher load failed</h3><div class="helper">${escapeHtml(err.message || 'Unknown error')}</div></div>`;
+      printStageEl.innerHTML = `<div class="card"><h3>Print template load failed</h3><div class="helper">${escapeHtml(err.message || 'Unknown error')}</div></div>`;
       printFeedbackEl.textContent = 'Load failed';
     }
   }

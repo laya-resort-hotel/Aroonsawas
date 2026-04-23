@@ -34,6 +34,13 @@ service cloud.firestore {
       );
     }
 
+    function isManagerOrAbove() {
+      return isActive() && (
+        myProfile().role == "manager" ||
+        myProfile().role == "admin"
+      );
+    }
+
     function isStaffOrAbove() {
       return isActive() && (
         myProfile().role == "staff" ||
@@ -67,6 +74,7 @@ service cloud.firestore {
         && request.resource.data.issued_by_name == resource.data.issued_by_name;
     }
 
+    // ===== EXISTING FREE VOUCHER SYSTEM (keep as-is) =====
     match /employee_login_index/{employeeId} {
       allow read: if true;
       allow create: if signedIn()
@@ -141,6 +149,78 @@ service cloud.firestore {
 
     match /running_numbers/{docId} {
       allow read, write: if isSupervisorOrAbove();
+    }
+
+    // ===== NEW SALE CARD SYSTEM v6 =====
+    match /sale_settings/{docId} {
+      allow read: if isStaffOrAbove();
+      allow create, update: if isManagerOrAbove();
+      allow delete: if isAdmin();
+    }
+
+    match /sale_cards/{cardId} {
+      allow read: if isStaffOrAbove();
+
+      allow create: if isManagerOrAbove()
+        && request.resource.data.card_code is string
+        && request.resource.data.card_label is string
+        && request.resource.data.face_value is number
+        && request.resource.data.sold_price is number
+        && request.resource.data.status == "draft"
+        && request.resource.data.remaining_balance == 0;
+
+      allow update: if isManagerOrAbove()
+        || (
+          isStaffOrAbove()
+          && request.resource.data.card_code == resource.data.card_code
+          && request.resource.data.card_label == resource.data.card_label
+          && request.resource.data.card_serial == resource.data.card_serial
+          && request.resource.data.face_value == resource.data.face_value
+          && request.resource.data.sold_price == resource.data.sold_price
+          && request.resource.data.outlet_scope == resource.data.outlet_scope
+          && request.resource.data.valid_until == resource.data.valid_until
+          && request.resource.data.notes == resource.data.notes
+          && request.resource.data.created_by_uid == resource.data.created_by_uid
+          && request.resource.data.created_by_name == resource.data.created_by_name
+          && request.resource.data.created_at == resource.data.created_at
+          && resource.data.status == "active"
+          && (request.resource.data.status == "active" || request.resource.data.status == "empty")
+          && request.resource.data.remaining_balance is number
+          && request.resource.data.remaining_balance >= 0
+          && request.resource.data.remaining_balance <= resource.data.remaining_balance
+          && request.resource.data.last_used_by_uid == request.auth.uid
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    match /sale_card_transactions/{txnId} {
+      allow read: if isStaffOrAbove();
+      allow create: if isStaffOrAbove()
+        && request.resource.data.staff_uid == request.auth.uid
+        && request.resource.data.card_code is string
+        && request.resource.data.txn_type is string
+        && request.resource.data.amount is number;
+      allow update: if isAdmin()
+        || (
+          isSupervisorOrAbove()
+          && request.resource.data.card_id == resource.data.card_id
+          && request.resource.data.card_code == resource.data.card_code
+          && request.resource.data.txn_type == resource.data.txn_type
+          && request.resource.data.amount == resource.data.amount
+          && request.resource.data.balance_before == resource.data.balance_before
+          && request.resource.data.balance_after == resource.data.balance_after
+          && request.resource.data.outlet == resource.data.outlet
+          && request.resource.data.staff_uid == resource.data.staff_uid
+          && request.resource.data.staff_name == resource.data.staff_name
+          && request.resource.data.note == resource.data.note
+          && request.resource.data.created_at == resource.data.created_at
+          && request.resource.data.business_date == resource.data.business_date
+          && request.resource.data.voided == true
+          && request.resource.data.voided_at != null
+          && request.resource.data.voided_by_uid == request.auth.uid
+        );
+      allow delete: if isAdmin();
     }
   }
 }

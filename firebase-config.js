@@ -3,6 +3,9 @@ import { getFirestore } from "https://www.gstatic.com/firebasejs/12.11.0/firebas
 import { getAuth } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-analytics.js";
 
+// Auto-login from old repo mode:
+// This new repo intentionally uses the SAME Firebase Auth project as the old voucher repo
+// so staff who already signed in there can be recognized here automatically.
 const firebaseConfig = {
   apiKey: "AIzaSyDNx5D-SB2VWa4LkksfJKKeF82h3ReMMUk",
   authDomain: "aroonsawat-ca537.firebaseapp.com",
@@ -23,5 +26,23 @@ try {
 } catch (e) {
   console.warn("Analytics not initialized in this environment.", e);
 }
+
+export const appConfig = {
+  backToFreeVoucherUrl: "https://laya-resort-hotel.github.io/aroonsawat/dashboard.html",
+  saleCardRepoUrl: "https://wuttichaikoji-oss.github.io/Laya-Sales-Voucher/",
+  appName: "Laya Sales Voucher v6",
+  companyName: "LAYA RESORT HOTEL"
+};
+
+export const saleCardCollections = {
+  cards: "sale_cards",
+  transactions: "sale_card_transactions",
+  settings: "sale_settings"
+};
+
+export const legacyCollections = {
+  users: "users",
+  employeeLoginIndex: "employee_login_index"
+};
 
 export { db, auth, analytics };
