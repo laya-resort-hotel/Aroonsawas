@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Add Reusable Card</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"></script>
+  <style>
+    .issue-grid-v5 { display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,.9fr); gap:18px; }
+    .issue-form-grid-v5 { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px; }
+    .issue-form-grid-v5 .full { grid-column:1 / -1; }
+    .preview-shell { display:flex; flex-direction:column; gap:16px; }
+    .qr-preview-box { display:flex; gap:18px; align-items:center; flex-wrap:wrap; }
+    #qrcode { min-height:160px; display:flex; align-items:center; justify-content:center; }
+    @media (max-width: 900px) {
+      .issue-grid-v5 { grid-template-columns:1fr; }
+      .issue-form-grid-v5 { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body class="app-page">
+  <div class="container app-shell">
+    <section class="page-header">
+      <div class="page-header-row">
+        <div>
+          <span class="soft-badge">Card Setup</span>
+          <h1>Add Reusable Card</h1>
+          <p class="page-subtitle">สร้างการ์ด Voucher แบบถาวรสำหรับแจกแขกหน้างาน โดย QR บนการ์ดจะเป็น Voucher Code ถาวรที่สามารถ Reuse ได้หลังรับการ์ดคืน</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="issue-grid-v5">
+      <div class="card section-card">
+        <h2>Card Information</h2>
+        <p class="page-subtitle">กรอกข้อมูลการ์ด จากนั้นกด Generate เพื่อดู QR ก่อนสร้างจริง</p>
+        <div class="issue-form-grid-v5">
+          <input id="cardLabel" placeholder="Card Label เช่น CARD-001" />
+          <input id="cardGroup" placeholder="Card Group เช่น STARBUCKS" value="STARBUCKS" />
+          <input id="outlet" placeholder="Outlet" value="Aroonsawat" />
+          <select id="pricePlan">
+            <option value="500_600">Buy THB 500 = THB 600</option>
+            <option value="1000_1200">Buy THB 1,000 = THB 1,200</option>
+          </select>
+          <input id="displayNo" placeholder="Display No (optional)" />
+          <textarea id="note" class="full" placeholder="หมายเหตุเพิ่มเติม (optional)"></textarea>
+        </div>
+        <div style="height:14px"></div>
+        <div class="button-row">
+          <button id="generateBtn" type="button">Generate QR &amp; Code</button>
+          <button id="createBtn" type="button" disabled>Create Card</button>
+        </div>
+      </div>
+
+      <div class="preview-shell">
+        <div id="previewSection" class="card section-card hidden">
+          <h2>Preview</h2>
+          <p class="page-subtitle">นี่คือข้อมูลที่จะถูกบันทึกเป็นการ์ดถาวรในระบบ</p>
+          <div class="qr-preview-box">
+            <div id="qrcode"></div>
+            <div>
+              <p><strong>Card Label:</strong> <span id="previewCardLabel">-</span></p>
+              <p><strong>Voucher Code:</strong> <span id="previewVoucherCode">-</span></p>
+              <p><strong>Card Group:</strong> <span id="previewGroup">-</span></p>
+              <p><strong>Outlet:</strong> <span id="previewOutlet">-</span></p>
+              <p><strong>Package:</strong> <span id="previewPackage">-</span></p>
+              <p><strong>Department:</strong> <span id="previewDept">-</span></p>
+            </div>
+          </div>
+        </div>
+
+        <div id="result" class="hidden"></div>
+      </div>
+    </div>
+
+    <div class="nav no-print" id="navMenu"></div>
+  </div>
+
+  <script type="module">
+    import { db } from "./firebase-config.js";
+    import { requireRole, renderNav } from "./auth-guard.js";
+    import {
+      collection, addDoc, serverTimestamp, query, where, getDocs, doc, runTransaction
+    } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+
+    const { user, profile } = await requireRole(["supervisor", "manager", "admin"]);
+    renderNav(profile);
+
+    const cardLabelEl = document.getElementById("cardLabel");
+    const cardGroupEl = document.getElementById("cardGroup");
+    const outletEl = document.getElementById("outlet");
+    const pricePlanEl = document.getElementById("pricePlan");
+    const displayNoEl = document.getElementById("displayNo");
+    const noteEl = document.getElementById("note");
+    const previewSection = document.getElementById("previewSection");
+    const qrBox = document.getElementById("qrcode");
+    const generateBtn = document.getElementById("generateBtn");
+    const createBtn = document.getElementById("createBtn");
+    const result = document.getElementById("result");
+
+    let pendingCard = null;
+    const effectiveDepartment = (profile.department || "").trim() || "FB";
+
+    function getYearMonth() {
+      const now = new Date();
+      const year = now.getFullYear().toString().slice(-2);
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      return year + month;
+    }
+
+    async function generateVoucherSerial(department) {
+      const ym = getYearMonth();
+      const key = `${department}_${ym}`;
+      const ref = doc(db, "running_numbers", key);
+      let newNumber = 1;
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(ref);
+        if (!snap.exists()) {
+          transaction.set(ref, { department, year_month: ym, current_number: 1 });
+          newNumber = 1;
+        } else {
+          newNumber = (snap.data().current_number || 0) + 1;
+          transaction.update(ref, { current_number: newNumber });
+        }
+      });
+      return `${department}-${ym}-${String(newNumber).padStart(4, "0")}`;
+    }
+
+    function generateVoucherCode(length = 12) {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ234679";
+      let raw = "";
+      for (let i = 0; i < length; i++) raw += chars.charAt(Math.floor(Math.random() * chars.length));
+      return `${raw.slice(0,4)}-${raw.slice(4,8)}-${raw.slice(8,12)}`;
+    }
+
+    async function generateUniqueVoucherCode() {
+      let code = "";
+      let exists = true;
+      while (exists) {
+        code = generateVoucherCode();
+        const snap = await getDocs(query(collection(db, "vouchers"), where("voucher_code", "==", code)));
+        exists = !snap.empty;
+      }
+      return code;
+    }
+
+    async function isCardLabelTaken(label) {
+      const snap = await getDocs(query(collection(db, "vouchers"), where("card_label", "==", label)));
+      return !snap.empty;
+    }
+
+    function renderQr(text) {
+      qrBox.innerHTML = "";
+      new QRCode(qrBox, { text, width: 160, height: 160, correctLevel: QRCode.CorrectLevel.H });
+    }
+
+    function renderPreview(data) {
+      previewSection.classList.remove("hidden");
+      document.getElementById("previewCardLabel").textContent = data.cardLabel;
+      document.getElementById("previewVoucherCode").textContent = data.voucherCode;
+      document.getElementById("previewGroup").textContent = data.cardGroup;
+      document.getElementById("previewOutlet").textContent = data.outlet;
+      document.getElementById("previewPackage").textContent = `Buy THB ${data.purchaseAmount.toLocaleString()} = THB ${data.redeemValue.toLocaleString()}`;
+      document.getElementById("previewDept").textContent = data.department;
+      renderQr(data.voucherCode);
+      createBtn.disabled = false;
+    }
+
+    function renderResultSuccess(saved) {
+      result.className = "card section-card status-box success";
+      result.innerHTML = `
+        <h3>Card created successfully</h3>
+        <p><strong>Card Label:</strong> ${saved.card_label}</p>
+        <p><strong>Voucher Code:</strong> ${saved.voucher_code}</p>
+        <p><strong>Outlet:</strong> ${saved.outlet}</p>
+        <p><strong>Package:</strong> Buy THB ${Number(saved.purchase_amount || 0).toLocaleString()} = THB ${Number(saved.voucher_value || 0).toLocaleString()}</p>
+        <div class="button-row" style="margin-top:12px;">
+          <button type="button" id="openDetailBtn">Open Detail</button>
+          <button type="button" id="openViewBtn" class="button-secondary">Open QR &amp; Code</button>
+        </div>
+      `;
+      document.getElementById("openDetailBtn").addEventListener("click", () => {
+        window.open(`voucher-detail.html?code=${encodeURIComponent(saved.voucher_code)}`, "_blank");
+      });
+      document.getElementById("openViewBtn").addEventListener("click", () => {
+        window.open(`view.html?code=${encodeURIComponent(saved.voucher_code)}`, "_blank");
+      });
+    }
+
+    function renderResultError(message) {
+      result.className = "card section-card status-box error";
+      result.innerHTML = `<h3>เกิดข้อผิดพลาด</h3><p>${message}</p>`;
+    }
+
+    generateBtn.addEventListener("click", async () => {
+      generateBtn.disabled = true;
+      createBtn.disabled = true;
+      try {
+        const cardLabel = cardLabelEl.value.trim();
+        const cardGroup = cardGroupEl.value.trim() || "STARBUCKS";
+        const outlet = outletEl.value.trim() || "Aroonsawat";
+        const planValue = (pricePlanEl.value || "500_600").split("_");
+        const purchaseAmount = Number(planValue[0] || 500);
+        const redeemValue = Number(planValue[1] || 600);
+        const displayNo = displayNoEl.value.trim();
+        const note = noteEl.value.trim();
+
+        if (!cardLabel) throw new Error("กรุณากรอก Card Label");
+        if (await isCardLabelTaken(cardLabel)) throw new Error("Card Label นี้ถูกใช้แล้ว");
+
+        pendingCard = {
+          internalNo: await generateVoucherSerial(effectiveDepartment),
+          displayNo: displayNo || cardLabel,
+          cardLabel,
+          cardGroup,
+          outlet,
+          purchaseAmount,
+          redeemValue,
+          pricePlan: `${purchaseAmount}_${redeemValue}`,
+          note,
+          voucherCode: await generateUniqueVoucherCode(),
+          department: effectiveDepartment
+        };
+
+        renderPreview(pendingCard);
+        result.className = "hidden";
+        result.innerHTML = "";
+      } catch (err) {
+        renderResultError(`Generate ไม่สำเร็จ: ${err.message}`);
+      } finally {
+        generateBtn.disabled = false;
+      }
+    });
+
+    createBtn.addEventListener("click", async () => {
+      if (!pendingCard) return alert("กรุณา Generate QR & Code ก่อน");
+      createBtn.disabled = true;
+      try {
+        const payload = {
+          internal_no: pendingCard.internalNo,
+          display_no: pendingCard.displayNo,
+          voucher_code: pendingCard.voucherCode,
+          card_label: pendingCard.cardLabel,
+          card_group: pendingCard.cardGroup,
+          voucher_mode: "reusable_card",
+          department: pendingCard.department,
+          outlet: pendingCard.outlet,
+          purchase_amount: pendingCard.purchaseAmount,
+          voucher_value: pendingCard.redeemValue,
+          price_plan: pendingCard.pricePlan,
+          status: "issued",
+          reset_count: 0,
+          last_reset_at: null,
+          last_reset_by_uid: "",
+          last_reset_by_name: "",
+          disabled_reason: "",
+          template_type: "reusable_card",
+          voucher_title_small: `BUY THB ${pendingCard.purchaseAmount.toLocaleString()}`,
+          voucher_title_big: `VALUE THB ${pendingCard.redeemValue.toLocaleString()}`,
+          voucher_description: `Present this physical card to outlet staff before ordering. Buy THB ${pendingCard.purchaseAmount.toLocaleString()} = THB ${pendingCard.redeemValue.toLocaleString()}.`,
+          validity_mode: "until_reused",
+          validity_label: "Reusable Card",
+          validity_days: null,
+          expiry_date: null,
+          name: "",
+          phone: "",
+          room: "",
+          reason: pendingCard.note || "",
+          issued_by_uid: user.uid,
+          issued_by_name: profile.name || "",
+          issued_by_role: profile.role,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
+          policy_version: "v5"
+        };
+
+        await addDoc(collection(db, "vouchers"), payload);
+        await addDoc(collection(db, "voucher_logs"), {
+          voucher_code: payload.voucher_code,
+          voucher_ref: payload.internal_no,
+          department: payload.department,
+          outlet: payload.outlet,
+          action: "issued",
+          action_at: serverTimestamp(),
+          action_by_uid: user.uid,
+          action_by_name: profile.name || profile.employee_id || "",
+          action_by_role: profile.role,
+          note: `Reusable card created / ${payload.card_label}`
+        });
+        renderResultSuccess(payload);
+      } catch (err) {
+        renderResultError(`สร้างการ์ดไม่สำเร็จ: ${err.message}`);
+      } finally {
+        createBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Card Detail</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"></script>
+</head>
+<body class="app-page">
+  <div class="container app-shell">
+    <section class="page-header">
+      <div class="page-header-row">
+        <div>
+          <span class="soft-badge">Card Detail</span>
+          <h1>Reusable Card Detail</h1>
+          <p class="page-subtitle">ดูรายละเอียดการ์ดถาวร เปิด QR / Code, ตรวจประวัติการใช้งาน และสั่ง Reuse / Disable / Enable ได้จากหน้านี้</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="card section-card">
+      <h2>Open Card</h2>
+      <div class="inline-actions">
+        <input id="codeInput" type="text" placeholder="ใส่ Voucher Code" />
+        <button id="openBtn" type="button">Open</button>
+      </div>
+    </div>
+
+    <div id="detailCard" class="card section-card hidden result-highlight"></div>
+    <div id="timelineCard" class="card section-card hidden">
+      <h2>Timeline</h2>
+      <div id="timelineBody">กำลังโหลด...</div>
+    </div>
+
+    <div class="nav no-print" id="navMenu"></div>
+  </div>
+
+  <script type="module">
+    import { db } from "./firebase-config.js";
+    import { requireRole, renderNav } from "./auth-guard.js";
+    import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, addDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+
+    const { user, profile } = await requireRole(["supervisor", "manager", "admin"]);
+    renderNav(profile);
+
+    const codeInput = document.getElementById("codeInput");
+    const openBtn = document.getElementById("openBtn");
+    const detailCard = document.getElementById("detailCard");
+    const timelineCard = document.getElementById("timelineCard");
+    const timelineBody = document.getElementById("timelineBody");
+
+    let currentDocId = null;
+    let currentData = null;
+
+    function toDate(value) {
+      if (!value) return null;
+      try { return value.toDate ? value.toDate() : new Date(value); } catch { return null; }
+    }
+    function fmt(value) {
+      const d = toDate(value);
+      return d ? d.toLocaleString("th-TH") : "-";
+    }
+    function statusLabel(status) {
+      if (status === "issued") return "Available";
+      if (status === "redeemed") return "Used";
+      if (status === "disabled") return "Disabled";
+      return status || "-";
+    }
+    function allowedByScope(data) {
+      if (profile.role === "admin") return true;
+      return (data.department || "") === (profile.department || "");
+    }
+
+    async function findCardByCode(code) {
+      const snap = await getDocs(query(collection(db, "vouchers"), where("voucher_code", "==", code)));
+      return snap.empty ? null : snap.docs[0];
+    }
+
+    async function logAction(card, action, note) {
+      await addDoc(collection(db, "voucher_logs"), {
+        voucher_code: card.voucher_code || "",
+        voucher_ref: card.internal_no || "",
+        department: card.department || "",
+        outlet: card.outlet || "",
+        action,
+        action_at: serverTimestamp(),
+        action_by_uid: user.uid,
+        action_by_name: profile.name || profile.employee_id || "",
+        action_by_role: profile.role,
+        note
+      });
+    }
+
+    function renderQr(code) {
+      const host = document.getElementById("detailQr");
+      host.innerHTML = "";
+      new QRCode(host, { text: code, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.H });
+    }
+
+    function renderDetail(data) {
+      detailCard.classList.remove("hidden");
+      detailCard.innerHTML = `
+        <div class="detail-grid" style="display:grid;grid-template-columns:minmax(240px,.8fr) minmax(0,1.2fr);gap:18px;align-items:start;">
+          <div class="card" style="padding:18px;">
+            <div id="detailQr"></div>
+            <p class="ref" style="margin-top:12px;">QR นี้ควรพิมพ์อยู่บนการ์ดจริงและใช้ซ้ำได้หลัง Front Desk กด Reuse</p>
+          </div>
+          <div>
+            <h2 style="margin-top:0;">${data.card_label || data.voucher_code}</h2>
+            <p><strong>Voucher Code:</strong> ${data.voucher_code || "-"}</p>
+            <p><strong>Status:</strong> <span class="status-pill status-${data.status || "issued"}">${statusLabel(data.status)}</span></p>
+            <p><strong>Card Group:</strong> ${data.card_group || "-"}</p>
+            <p><strong>Package:</strong> ${data.purchase_amount ? `Buy THB ${Number(data.purchase_amount || 0).toLocaleString()} = THB ${Number(data.voucher_value || 0).toLocaleString()}` : "-"}</p>
+            <p><strong>Department / Outlet:</strong> ${data.department || "-"} / ${data.outlet || "-"}</p>
+            <p><strong>Created At:</strong> ${fmt(data.created_at)}</p>
+            <p><strong>Issued By:</strong> ${data.issued_by_name || data.issued_by_uid || "-"}</p>
+            <p><strong>Redeemed At:</strong> ${fmt(data.redeemed_at)}</p>
+            <p><strong>Redeemed By:</strong> ${data.redeemed_by_name || data.redeemed_by_uid || "-"}</p>
+            <p><strong>Reset Count:</strong> ${data.reset_count || 0}</p>
+            <p><strong>Last Reset:</strong> ${fmt(data.last_reset_at)}</p>
+            <p><strong>Last Reset By:</strong> ${data.last_reset_by_name || data.last_reset_by_uid || "-"}</p>
+            <p><strong>Disabled Reason:</strong> ${data.disabled_reason || "-"}</p>
+            <div class="button-row" style="margin-top:12px;">
+              ${data.status === "redeemed" ? `<button id="reuseBtn" type="button">Reuse Card</button>` : ""}
+              ${data.status !== "disabled" ? `<button id="disableBtn" type="button" class="button-secondary">Disable Card</button>` : `<button id="enableBtn" type="button" class="button-secondary">Enable Card</button>`}
+              <button id="openViewBtn" type="button" class="button-ghost">Open QR &amp; Code</button>
+              ${profile.role === "admin" ? `<button id="deleteBtn" type="button" class="danger-btn">Delete Card</button>` : ""}
+            </div>
+          </div>
+        </div>
+      `;
+      renderQr(data.voucher_code || "");
+      const reuseBtn = document.getElementById("reuseBtn");
+      const disableBtn = document.getElementById("disableBtn");
+      const enableBtn = document.getElementById("enableBtn");
+      const openViewBtn = document.getElementById("openViewBtn");
+      const deleteBtn = document.getElementById("deleteBtn");
+      if (reuseBtn) reuseBtn.addEventListener("click", reuseCard);
+      if (disableBtn) disableBtn.addEventListener("click", disableCard);
+      if (enableBtn) enableBtn.addEventListener("click", enableCard);
+      if (openViewBtn) openViewBtn.addEventListener("click", () => window.open(`view.html?code=${encodeURIComponent(data.voucher_code || "")}`, "_blank"));
+      if (deleteBtn) deleteBtn.addEventListener("click", deleteCard);
+    }
+
+    async function loadTimeline(voucherCode) {
+      timelineCard.classList.remove("hidden");
+      try {
+        const snap = await getDocs(query(collection(db, "voucher_logs"), where("voucher_code", "==", voucherCode)));
+        if (snap.empty) {
+          timelineBody.innerHTML = "ยังไม่มีประวัติ";
+          return;
+        }
+        const items = snap.docs.map((d) => d.data()).sort((a, b) => (toDate(b.action_at)?.getTime() || 0) - (toDate(a.action_at)?.getTime() || 0));
+        timelineBody.innerHTML = `<div class="timeline-list">${items.map((item) => {
+          return `
+            <div class="timeline-item">
+              <div class="time">${fmt(item.action_at)}</div>
+              <div class="action">${item.action || "-"}</div>
+              <div>${item.action_by_name || item.action_by_uid || "-"}</div>
+              <div class="note">${item.note || ""}</div>
+            </div>
+          `;
+        }).join("")}</div>`;
+      } catch (err) {
+        timelineBody.innerHTML = `<p class="error">${err.message}</p>`;
+      }
+    }
+
+    async function openCard() {
+      const code = codeInput.value.trim();
+      if (!code) return alert("กรุณาใส่ Voucher Code");
+      const found = await findCardByCode(code);
+      if (!found) return alert("ไม่พบการ์ดนี้ในระบบ");
+      currentDocId = found.id;
+      currentData = found.data();
+      if ((currentData.voucher_mode || "") !== "reusable_card") return alert("รายการนี้ไม่ใช่ Reusable Card Mode");
+      if (!allowedByScope(currentData)) return alert("คุณไม่มีสิทธิ์เข้าถึงการ์ดนี้");
+      renderDetail(currentData);
+      await loadTimeline(currentData.voucher_code);
+    }
+
+    async function reuseCard() {
+      const ok = confirm(`ยืนยัน Reuse ${currentData.card_label || currentData.voucher_code}?`);
+      if (!ok) return;
+      try {
+        const ref = doc(db, "vouchers", currentDocId);
+        await runTransaction(db, async (transaction) => {
+          const snap = await transaction.get(ref);
+          if (!snap.exists()) throw new Error("ไม่พบการ์ดในระบบ");
+          const latest = snap.data();
+          if (latest.status !== "redeemed") throw new Error("Reuse ได้เฉพาะการ์ดที่ใช้แล้ว");
+          transaction.update(ref, {
+            status: "issued",
+            redeemed_at: null,
+            redeemed_by_uid: "",
+            redeemed_by_name: "",
+            last_reset_at: serverTimestamp(),
+            last_reset_by_uid: user.uid,
+            last_reset_by_name: profile.name || profile.employee_id || "",
+            reset_count: (latest.reset_count || 0) + 1,
+            updated_at: serverTimestamp()
+          });
+        });
+        await logAction(currentData, "reused", "Card reset from Detail");
+        await openCard();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function disableCard() {
+      const ok = confirm(`ยืนยัน Disable ${currentData.card_label || currentData.voucher_code}?`);
+      if (!ok) return;
+      try {
+        await runTransaction(db, async (transaction) => {
+          const ref = doc(db, "vouchers", currentDocId);
+          const snap = await transaction.get(ref);
+          if (!snap.exists()) throw new Error("ไม่พบการ์ดในระบบ");
+          transaction.update(ref, {
+            status: "disabled",
+            disabled_reason: "Disabled from Detail",
+            updated_at: serverTimestamp()
+          });
+        });
+        await logAction(currentData, "disabled", "Card disabled from Detail");
+        await openCard();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function enableCard() {
+      const ok = confirm(`ยืนยัน Enable ${currentData.card_label || currentData.voucher_code}?`);
+      if (!ok) return;
+      try {
+        await runTransaction(db, async (transaction) => {
+          const ref = doc(db, "vouchers", currentDocId);
+          const snap = await transaction.get(ref);
+          if (!snap.exists()) throw new Error("ไม่พบการ์ดในระบบ");
+          transaction.update(ref, {
+            status: "issued",
+            disabled_reason: "",
+            updated_at: serverTimestamp()
+          });
+        });
+        await logAction(currentData, "enabled", "Card enabled from Detail");
+        await openCard();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function deleteCard() {
+      if (profile.role !== "admin") return;
+      const confirmText = prompt(`พิมพ์ ${currentData.voucher_code} เพื่อยืนยันการลบถาวร`);
+      if (confirmText !== currentData.voucher_code) return;
+      try {
+        await deleteDoc(doc(db, "vouchers", currentDocId));
+        await logAction(currentData, "deleted", "Card deleted from Detail by admin");
+        detailCard.innerHTML = `<p class="success">ลบการ์ดแล้ว</p>`;
+        timelineBody.innerHTML = "-";
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    openBtn.addEventListener("click", openCard);
+    codeInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") openCard();
+    });
+
+    const preset = new URLSearchParams(window.location.search).get("code");
+    if (preset) {
+      codeInput.value = preset;
+      await openCard();
+    }
+  </script>
+</body>
+</html>
