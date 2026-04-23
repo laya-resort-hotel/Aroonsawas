@@ -94,6 +94,66 @@ function matchesDateRange(dateValue, fromDate, toDate) {
   return true;
 }
 
+
+export function getCardBatchInfo(cardOrCode) {
+  const raw = typeof cardOrCode === "string" ? cardOrCode : (cardOrCode?.card_code || "");
+  const code = parseCardCode(raw);
+  const m = code.match(/^SV(\d+)-B([A-Z0-9]{1,4})-(\d{1,})$/i);
+  if (!m) return null;
+  const faceValue = Number(m[1] || 0);
+  const batchNo = String(m[2] || '').toUpperCase();
+  const runningNo = Number(m[3] || 0);
+  return {
+    code,
+    faceValue,
+    batchNo,
+    runningNo,
+    batchKey: `SV${faceValue}-B${batchNo}`,
+    serialKey: `SV${faceValue}-B${batchNo}-${String(runningNo).padStart(4, '0')}`
+  };
+}
+
+export function inferVoucherPackage(card = {}) {
+  const sold = Number(card?.sold_price || 0);
+  const face = Number(card?.face_value || 0);
+  if (sold === 500 || face === 600) {
+    return {
+      purchaseAmount: 500,
+      voucherValue: 600,
+      shortLabel: '500→600',
+      fullLabel: 'Buy THB 500 = THB 600',
+      frontAsset: 'assets/voucher-value/front-500.png'
+    };
+  }
+  if (sold === 1000 || face === 1200) {
+    return {
+      purchaseAmount: 1000,
+      voucherValue: 1200,
+      shortLabel: '1000→1200',
+      fullLabel: 'Buy THB 1,000 = THB 1,200',
+      frontAsset: 'assets/voucher-value/front-1000.png'
+    };
+  }
+  const purchaseAmount = sold > 0 ? sold : face;
+  const voucherValue = face > 0 ? face : sold;
+  return {
+    purchaseAmount,
+    voucherValue,
+    shortLabel: purchaseAmount && voucherValue ? `${purchaseAmount}→${voucherValue}` : 'Custom',
+    fullLabel: purchaseAmount && voucherValue ? `Buy THB ${new Intl.NumberFormat('en-US').format(purchaseAmount)} = THB ${new Intl.NumberFormat('en-US').format(voucherValue)}` : 'Custom',
+    frontAsset: ''
+  };
+}
+
+export async function listCardsByBatch(seed) {
+  const batch = getCardBatchInfo(seed);
+  if (!batch?.batchKey) return [];
+  const rows = await listCards({});
+  return rows
+    .filter(row => getCardBatchInfo(row)?.batchKey === batch.batchKey)
+    .sort((a, b) => (getCardBatchInfo(a)?.runningNo || 0) - (getCardBatchInfo(b)?.runningNo || 0));
+}
+
 export async function getSettings() {
   const ref = doc(db, saleCardCollections.settings, "app");
   const snap = await getDoc(ref);

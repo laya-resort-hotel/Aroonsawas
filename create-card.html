@@ -288,8 +288,9 @@
     cardCode.value = '';
     cardLabel.value = '';
     cardSerial.value = '';
+    voucherPlan.value = '500_600';
     faceValue.value = 600;
-    soldPrice.value = 490;
+    soldPrice.value = 500;
     batchNo.value = '01';
     validUntil.value = '';
     notesEl.value = '';
@@ -300,6 +301,10 @@
 
   autoCode.addEventListener('change', async () => {
     syncReadOnlyState();
+    await renderPreview();
+  });
+  voucherPlan.addEventListener('change', async () => {
+    applyPlanPreset();
     await renderPreview();
   });
   [faceValue, batchNo].forEach(el => el.addEventListener('input', async () => {

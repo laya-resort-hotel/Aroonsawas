@@ -1,10 +1,39 @@
 <!DOCTYPE html>
 <html lang="th">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Card Detail</title><link rel="stylesheet" href="style.css" /></head>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Card Detail</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .package-banner {
+      margin: 0 0 14px 0;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(0,98,65,.12), rgba(30,57,50,.10));
+      border: 1px solid rgba(0,98,65,.14);
+    }
+    .package-banner .eyebrow {
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: var(--text-soft);
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+    .package-banner .title {
+      font-size: 1.18rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .meta-badges { display:flex; gap:8px; flex-wrap:wrap; }
+    .meta-badges .badge { font-weight:700; }
+  </style>
+</head>
 <body><div id="app"></div>
 <script type="module">
   import { mountShell, roleCan } from './auth-guard.js';
-  import { getCardById, getCardTransactions, updateCardStatus, adjustBalance, voidDebitTransaction, escapeHtml, formatMoney, getStatusClass, toDateTimeText, toDateValue } from './app.js';
+  import { getCardById, getCardTransactions, updateCardStatus, adjustBalance, voidDebitTransaction, escapeHtml, formatMoney, getStatusClass, toDateTimeText, toDateValue, inferVoucherPackage, getCardBatchInfo } from './app.js';
   const ctx = await mountShell('card-detail.html','Card Detail','สรุปข้อมูลบัตร 1 ใบ โดย FB Staff ดูได้แบบอ่านอย่างเดียว');
   const id = new URLSearchParams(location.search).get('id');
   const el = document.getElementById('pageContent');
@@ -15,20 +44,35 @@
       el.innerHTML = '<div class="card">Card not found.</div>';
       return;
     }
+    const pkg = inferVoucherPackage(card);
+    const batch = getCardBatchInfo(card);
     const txns = await getCardTransactions(card.id);
     const lastVoidable = txns.find(t => t.txn_type === 'debit' && !t.voided);
     el.innerHTML = `
       <div class="split">
         <div class="card">
           <h3>Card Summary</h3>
+          <div class="package-banner">
+            <div class="eyebrow">Voucher Package</div>
+            <div class="title">${escapeHtml(pkg.fullLabel)}</div>
+            <div class="meta-badges">
+              <span class="badge success">Package ${escapeHtml(pkg.shortLabel)}</span>
+              <span class="badge info">Purchase ${escapeHtml(formatMoney(pkg.purchaseAmount))}</span>
+              <span class="badge warn">Redeem Value ${escapeHtml(formatMoney(pkg.voucherValue))}</span>
+              ${batch?.batchKey ? `<span class="badge">Batch ${escapeHtml(batch.batchKey)}</span>` : ''}
+            </div>
+          </div>
           <div class="list-item">
             <div class="stat-line"><span>Card Code</span><strong>${escapeHtml(card.card_code)}</strong></div>
             <div class="stat-line"><span>Card Label</span><strong>${escapeHtml(card.card_label || '-')}</strong></div>
             <div class="stat-line"><span>Serial</span><strong>${escapeHtml(card.card_serial || '-')}</strong></div>
             <div class="stat-line"><span>Status</span><strong><span class="${getStatusClass(card.status)}">${card.status}</span></strong></div>
-            <div class="stat-line"><span>Face Value</span><strong>${formatMoney(card.face_value)}</strong></div>
-            <div class="stat-line"><span>Sold Price</span><strong>${formatMoney(card.sold_price)}</strong></div>
+            <div class="stat-line"><span>Package</span><strong>${escapeHtml(pkg.fullLabel)}</strong></div>
+            <div class="stat-line"><span>Purchase Amount</span><strong>${formatMoney(pkg.purchaseAmount)}</strong></div>
+            <div class="stat-line"><span>Voucher Value</span><strong>${formatMoney(pkg.voucherValue)}</strong></div>
             <div class="stat-line"><span>Remaining Balance</span><strong>${formatMoney(card.remaining_balance)}</strong></div>
+            <div class="stat-line"><span>Batch</span><strong>${escapeHtml(batch?.batchKey || '-')}</strong></div>
+            <div class="stat-line"><span>Running No.</span><strong>${escapeHtml(batch?.runningNo ? String(batch.runningNo).padStart(4,'0') : '-')}</strong></div>
             <div class="stat-line"><span>Outlet Scope</span><strong>${escapeHtml(card.outlet_scope || '-')}</strong></div>
             <div class="stat-line"><span>Valid Until</span><strong>${escapeHtml(toDateValue(card.valid_until) || 'Until empty')}</strong></div>
             <div class="stat-line"><span>Sold At</span><strong>${toDateTimeText(card.sold_at)}</strong></div>
@@ -38,7 +82,9 @@
             ${roleCan(ctx.profile.role, 'sell') && card.status !== 'disabled' ? `<button class="btn danger" id="disableBtn" type="button">Disable</button>` : ''}
             ${roleCan(ctx.profile.role, 'sell') && card.status === 'disabled' ? `<button class="btn primary" id="enableBtn" type="button">Enable</button>` : ''}
             ${roleCan(ctx.profile.role, 'sell') ? `<button class="btn secondary" id="adjustPlusBtn" type="button">Adjustment +</button><button class="btn secondary" id="adjustMinusBtn" type="button">Adjustment -</button>` : ''}
-            ${roleCan(ctx.profile.role, 'print') ? `<a class=\"btn secondary\" href=\"print-card-template.html?id=${encodeURIComponent(card.id)}\" target=\"_blank\" rel=\"noopener noreferrer\">Print Card</a>` : ''}${roleCan(ctx.profile.role, 'transactions') && lastVoidable ? `<button class="btn secondary" id="voidLastDebitBtn" type="button">Void Last Debit</button>` : ''}
+            ${roleCan(ctx.profile.role, 'print') ? `<a class="btn secondary" href="print-card-template.html?id=${encodeURIComponent(card.id)}" target="_blank" rel="noopener noreferrer">Print Card</a>` : ''}
+            ${roleCan(ctx.profile.role, 'print') && batch?.batchKey ? `<a class="btn secondary" href="print-batch-9up.html?id=${encodeURIComponent(card.id)}" target="_blank" rel="noopener noreferrer">Print 9 / A4</a>` : ''}
+            ${roleCan(ctx.profile.role, 'transactions') && lastVoidable ? `<button class="btn secondary" id="voidLastDebitBtn" type="button">Void Last Debit</button>` : ''}
           </div>
           <div id="actionFeedback" class="helper" style="margin-top:10px"></div>
         </div>

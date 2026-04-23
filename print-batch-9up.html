@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Print Batch 9-up</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .batch-toolbar{padding:18px 22px;margin-bottom:18px}
+    .batch-toolbar .btn-row{display:flex;gap:12px;flex-wrap:wrap}
+    .batch-meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+    .batch-sheets{display:flex;flex-direction:column;gap:20px;align-items:center}
+    .batch-sheet{width:297mm;min-height:210mm;background:#fff;color:#111;border-radius:14px;box-shadow:0 12px 28px rgba(0,0,0,.12);padding:8mm;box-sizing:border-box}
+    .sheet-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6mm}
+    .sheet-title{font-size:18px;font-weight:900;margin:0}
+    .sheet-sub{font-size:12px;color:#54625d;margin-top:4px}
+    .sheet-grid{display:grid;grid-template-columns:repeat(3,85.6mm);gap:4mm;justify-content:center}
+    .nine-card{width:85.6mm;height:54mm;border-radius:16px;overflow:hidden;position:relative;background:#efefef;border:1px solid rgba(0,0,0,.12)}
+    .nine-card.front{background-position:center;background-size:cover;background-repeat:no-repeat}
+    .nine-card.front .fallback{position:absolute;inset:0;background:linear-gradient(135deg,#dcefe8 0%,#87d6df 45%,#f4f4f1 100%)}
+    .front-badge{position:absolute;right:10px;bottom:10px;background:rgba(255,255,255,.94);color:#1f312d;border-radius:999px;padding:8px 14px;text-align:center;min-width:110px;box-shadow:0 5px 16px rgba(0,0,0,.16)}
+    .front-badge strong{display:block;font-size:16px;line-height:1.02}
+    .front-badge span{display:block;font-size:8px;letter-spacing:.18em;font-weight:800;margin-top:2px}
+    .nine-card.back{background:#ececec;padding:16px 18px;display:grid;grid-template-columns:1fr 138px;gap:14px}
+    .bk-title{font-size:17px;font-weight:900;margin:0 0 8px 0}
+    .bk-terms{margin:0;padding-left:16px;font-size:10.5px;line-height:1.28}
+    .bk-terms li{margin:0 0 3px 0}
+    .bk-contact{margin-top:auto;display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:9px;padding-top:6px}
+    .bk-contact .col{display:flex;flex-direction:column;gap:3px}
+    .bk-value{background:#000;color:#fff;border-radius:6px;padding:8px 9px 10px;text-align:center}
+    .bk-value .top{font-size:7px;letter-spacing:.1em;font-weight:800;margin-bottom:4px}
+    .bk-value .line{height:1px;background:rgba(255,255,255,.8);margin-bottom:6px}
+    .bk-value .big{font-size:15px;font-weight:900;line-height:1.02}
+    .bk-qr-wrap{position:relative;display:flex;justify-content:center;align-items:center;padding-top:6px}
+    .bk-qr{width:128px;height:128px;display:flex;align-items:center;justify-content:center}
+    .bk-qr > div{background:transparent !important;padding:0 !important;box-shadow:none !important}
+    .bk-circle{position:absolute;left:50%;top:50%;transform:translate(-50%,-18%);width:58px;height:58px;border-radius:50%;background:#000;color:#fff;border:2px solid rgba(255,255,255,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.16)}
+    .bk-circle .thb{font-size:8px;font-weight:800;line-height:1}
+    .bk-circle .num{font-size:13px;font-weight:900;line-height:1.05;margin-top:2px}
+    .bk-serial{font-size:9px;font-weight:800;margin-top:-2px}
+    .page-break{break-before:page;page-break-before:always}
+    @media print {
+      @page { size:A4 landscape; margin:8mm; }
+      body{background:#fff !important}
+      .no-print,.navbar,.topbar,.hero{display:none !important}
+      .app-shell,.page,#pageContent{padding:0 !important;margin:0 !important;box-shadow:none !important;background:transparent !important}
+      .batch-sheets{gap:0}
+      .batch-sheet{box-shadow:none;border-radius:0;padding:0;width:auto;min-height:auto;break-after:page;page-break-after:always}
+      .batch-sheet:last-child{break-after:auto;page-break-after:auto}
+    }
+  </style>
+</head>
+<body><div id="app"></div>
+<script type="module">
+  import { mountShell } from './auth-guard.js';
+  import { getCardById, getCardByCode, ensureQrCodeLib, escapeHtml, inferVoucherPackage, getCardBatchInfo, listCardsByBatch } from './app.js';
+
+  const ctx = await mountShell('print-batch-9up.html','Print Batch 9-up','พิมพ์บัตรชุดเดียวกัน 9 ใบต่อ A4 โดยเรียงหน้า front และ back ตาม batch เดียวกัน');
+  if (!ctx) throw new Error('auth required');
+
+  const el = document.getElementById('pageContent');
+  el.innerHTML = `
+    <div class="card no-print batch-toolbar">
+      <div class="btn-row">
+        <button class="btn primary" id="printBtn" type="button">Print 9 / A4</button>
+        <a class="btn secondary" id="backBtn" href="search-card.html">Back to Search</a>
+      </div>
+      <div id="feedback" class="helper" style="margin-top:8px">Loading batch...</div>
+      <div id="meta" class="batch-meta"></div>
+    </div>
+    <div id="sheetWrap" class="batch-sheets"></div>`;
+
+  const params = new URLSearchParams(location.search);
+  const id = params.get('id');
+  const code = params.get('code');
+  const sheetWrap = document.getElementById('sheetWrap');
+  const feedback = document.getElementById('feedback');
+  const meta = document.getElementById('meta');
+  const nf = new Intl.NumberFormat('en-US');
+
+  function chunk(items, size = 9) {
+    const out = [];
+    for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+    return out;
+  }
+
+  function frontCard(card, pkg) {
+    const bgStyle = pkg.frontAsset ? `background-image:url('${pkg.frontAsset}')` : '';
+    return `
+      <div class="nine-card front" style="${bgStyle}">
+        ${pkg.frontAsset ? '' : '<div class="fallback"></div>'}
+        <div class="front-badge"><strong>THB ${escapeHtml(nf.format(pkg.purchaseAmount))}</strong><span>VOUCHER</span></div>
+      </div>`;
+  }
+
+  function backCard(card, pkg) {
+    return `
+      <div class="nine-card back">
+        <div style="min-width:0;display:flex;flex-direction:column;">
+          <h3 class="bk-title">Terms &amp; Conditions</h3>
+          <ul class="bk-terms">
+            <li>Valid at Aroonsawat Café (We Proudly Serve Starbucks®) only</li>
+            <li>Buy THB ${escapeHtml(nf.format(pkg.purchaseAmount))} = THB ${escapeHtml(nf.format(pkg.voucherValue))}</li>
+            <li>Valid for 1 month from purchase date</li>
+            <li>Present card &amp; scan QR before ordering</li>
+            <li>Usable until balance is fully redeemed (within validity)</li>
+            <li>Non-refundable, non-transferable, no cash value</li>
+            <li>Lost/damaged card will not be replaced</li>
+            <li>Not combinable with other promotions</li>
+            <li>Aroonsawat Café reserves the right to amend without prior notice</li>
+          </ul>
+          <div class="bk-contact">
+            <div class="col"><div><strong>f</strong> &nbsp;Laya Resort Phuket</div><div><strong>◎</strong> &nbsp;@Laya Resort Phuket</div></div>
+            <div class="col"><div><strong>+66 (0) 7632 8888</strong></div><div><strong>fb@layaresortphuket.com</strong></div><div><strong>www.layaresortphuket.com/layaresortphuket</strong></div></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:stretch;">
+          <div class="bk-value"><div class="top">VOUCHER VALUE:</div><div class="line"></div><div class="big">THB ${escapeHtml(nf.format(pkg.voucherValue))}</div></div>
+          <div class="bk-qr-wrap"><div class="bk-qr" id="qr-${escapeHtml(card.id)}"></div><div class="bk-circle"><div class="thb">THB</div><div class="num">${escapeHtml(String(pkg.voucherValue))}</div></div></div>
+          <div class="bk-serial">${escapeHtml(card.card_serial || card.card_code || '-')}</div>
+        </div>
+      </div>`;
+  }
+
+  async function render() {
+    try {
+      const seed = id ? await getCardById(id) : await getCardByCode(code || '');
+      if (!seed) throw new Error('Card not found.');
+      document.getElementById('backBtn').href = `card-detail.html?id=${encodeURIComponent(seed.id)}`;
+      const batch = getCardBatchInfo(seed);
+      if (!batch?.batchKey) throw new Error('This card does not have a batch code pattern.');
+      const rows = await listCardsByBatch(seed);
+      if (!rows.length) throw new Error('No cards found in this batch.');
+      await ensureQrCodeLib();
+      const pkg = inferVoucherPackage(seed);
+      meta.innerHTML = `
+        <span class="badge success">Package ${escapeHtml(pkg.shortLabel)}</span>
+        <span class="badge">Batch ${escapeHtml(batch.batchKey)}</span>
+        <span class="badge info">Cards ${rows.length}</span>
+      `;
+      const groups = chunk(rows, 9);
+      sheetWrap.innerHTML = groups.map((group, i) => {
+        const frontGrid = group.map(card => frontCard(card, inferVoucherPackage(card))).join('');
+        const backGrid = group.map(card => backCard(card, inferVoucherPackage(card))).join('');
+        return `
+          <section class="batch-sheet">
+            <div class="sheet-head">
+              <div><h2 class="sheet-title">Batch Print · FRONT</h2><div class="sheet-sub">${escapeHtml(batch.batchKey)} · ${escapeHtml(pkg.fullLabel)} · Sheet ${i + 1}/${groups.length}</div></div>
+            </div>
+            <div class="sheet-grid">${frontGrid}</div>
+          </section>
+          <section class="batch-sheet">
+            <div class="sheet-head">
+              <div><h2 class="sheet-title">Batch Print · BACK</h2><div class="sheet-sub">${escapeHtml(batch.batchKey)} · ${escapeHtml(pkg.fullLabel)} · Sheet ${i + 1}/${groups.length}</div></div>
+            </div>
+            <div class="sheet-grid">${backGrid}</div>
+          </section>`;
+      }).join('');
+
+      rows.forEach(card => {
+        const holder = document.getElementById(`qr-${card.id}`);
+        if (!holder) return;
+        new window.QRCode(holder, {
+          text: card.card_code || '',
+          width: 128,
+          height: 128,
+          correctLevel: window.QRCode.CorrectLevel.H
+        });
+      });
+
+      feedback.textContent = `Ready to print ${rows.length} cards from batch ${batch.batchKey}. Front pages are followed by back pages for the same set.`;
+    } catch (err) {
+      feedback.textContent = err.message || 'Load failed';
+      sheetWrap.innerHTML = `<div class="card"><h3>Batch print load failed</h3><div class="helper">${escapeHtml(err.message || 'Unknown error')}</div></div>`;
+    }
+  }
+
+  document.getElementById('printBtn').addEventListener('click', () => window.print());
+  await render();
+</script>
+</body>
+</html>
