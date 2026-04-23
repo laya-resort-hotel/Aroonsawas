@@ -3,117 +3,85 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Print Card Template</title>
+  <title>Print QR</title>
   <link rel="stylesheet" href="style.css" />
   <style>
-    .value-print-toolbar{padding:18px 22px;margin-bottom:20px}
-    .value-print-toolbar .btn-row{display:flex;gap:12px;flex-wrap:wrap}
-    .value-print-stage{display:flex;justify-content:center}
-    .value-print-shell{display:flex;gap:28px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
-    .value-card-panel{display:flex;flex-direction:column;gap:10px;align-items:center}
-    .value-card-label{font-size:12px;letter-spacing:.2em;font-weight:800;color:#61716b}
-    .value-card{
-      width:85.6mm;
-      height:54mm;
-      border-radius:18px;
-      overflow:hidden;
-      position:relative;
-      box-shadow:0 18px 35px rgba(0,0,0,.16);
-      background:#efefef;
+    .qr-print-toolbar{padding:18px 22px;margin-bottom:20px}
+    .qr-print-toolbar .btn-row{display:flex;gap:12px;flex-wrap:wrap}
+    .qr-print-stage{display:flex;justify-content:center}
+    .qr-only-shell{display:flex;justify-content:center;align-items:center;width:100%}
+    .qr-only-card{
+      min-width:320px;
+      min-height:320px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:28px;
+      border-radius:24px;
+      background:#fff;
+      box-shadow:0 18px 40px rgba(0,0,0,.12);
+      border:1px solid rgba(0,0,0,.08);
     }
-    .value-card.front{
-      background-position:center;
-      background-size:cover;
-      background-repeat:no-repeat;
-      border:1px solid rgba(0,0,0,.06);
+    .qr-only-box{
+      width:260px;
+      height:260px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:#fff;
     }
-    .front-fallback{
-      position:absolute;inset:0;
-      background:linear-gradient(135deg,#dcefe8 0%,#87d6df 45%,#f4f4f1 100%);
+    .qr-only-box > div{
+      background:#fff !important;
+      padding:0 !important;
+      box-shadow:none !important;
+      border-radius:0 !important;
     }
-    .front-price-badge{
-      position:absolute;right:14px;bottom:14px;background:rgba(255,255,255,.92);color:#203330;
-      border-radius:999px;padding:10px 18px 9px 18px;text-align:center;min-width:122px;
-      box-shadow:0 6px 18px rgba(0,0,0,.16)
+    .qr-only-meta{
+      margin-top:14px;
+      text-align:center;
+      color:#5a6b66;
+      font-size:14px;
+      display:none;
     }
-    .front-price-badge strong{display:block;font-size:17px;line-height:1.05}
-    .front-price-badge span{display:block;font-size:9px;letter-spacing:.18em;font-weight:800;margin-top:2px}
-
-    .value-card.back{
-      background:#ececec;
-      border:1px solid #d5d5d5;
-      color:#111;
-      padding:18px 20px;
-      display:grid;
-      grid-template-columns:1fr 152px;
-      column-gap:16px;
-    }
-    .back-main{min-width:0;display:flex;flex-direction:column}
-    .back-title{font-size:18px;font-weight:900;margin:0 0 10px 0}
-    .back-terms{margin:0;padding-left:18px;font-size:11px;line-height:1.33}
-    .back-terms li{margin:0 0 4px 0}
-    .back-contact{
-      margin-top:auto;
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:10px;
-      font-size:10px;
-      padding-top:8px;
-    }
-    .back-contact .left,.back-contact .right{display:flex;flex-direction:column;gap:4px}
-    .back-contact strong{font-weight:800}
-    .back-right{display:flex;flex-direction:column;gap:8px;align-items:stretch}
-    .value-box{background:#000;color:#fff;border-radius:6px;padding:9px 10px 11px 10px;text-align:center}
-    .value-box .small{display:block;font-size:8px;letter-spacing:.08em;font-weight:800;margin-bottom:4px}
-    .value-box .line{height:1px;background:rgba(255,255,255,.75);margin:0 0 6px 0}
-    .value-box .big{display:block;font-size:16px;font-weight:900;line-height:1.05}
-    .back-qr-wrap{position:relative;background:transparent;display:flex;justify-content:center;align-items:center;padding-top:6px}
-    .back-qr{
-      width:138px;height:138px;background:transparent;display:flex;align-items:center;justify-content:center;
-    }
-    .back-qr > div{background:transparent !important;padding:0 !important;box-shadow:none !important}
-    .back-value-circle{
-      position:absolute;left:50%;top:50%;transform:translate(-50%,-22%);
-      width:64px;height:64px;border-radius:50%;background:#000;color:#fff;
-      display:flex;flex-direction:column;align-items:center;justify-content:center;
-      border:2px solid rgba(255,255,255,.9); box-shadow:0 2px 8px rgba(0,0,0,.16)
-    }
-    .back-value-circle .thb{font-size:9px;font-weight:800;line-height:1}
-    .back-value-circle .num{font-size:14px;font-weight:900;line-height:1.05;margin-top:2px}
-    .back-serial{font-size:10px;font-weight:800;text-align:left;margin-top:-2px}
-
-    @media (max-width: 900px) {
-      .value-print-shell{gap:18px}
-    }
-
     @media print {
       body{background:#fff !important}
-      .no-print{display:none !important}
+      .no-print,.navbar,.topbar,.hero,.nav{display:none !important}
       .content-shell,.page-shell,.page-card,#pageContent{padding:0 !important;margin:0 !important;background:transparent !important;box-shadow:none !important}
-      .value-print-shell{gap:8mm;flex-wrap:nowrap}
-      .value-card-panel{break-inside:avoid}
-      .value-card{box-shadow:none;border:0.3mm solid rgba(0,0,0,.18)}
+      .qr-print-stage{display:block}
+      .qr-only-shell{display:block}
+      .qr-only-card{
+        width:auto;
+        min-width:0;
+        min-height:0;
+        box-shadow:none;
+        border:none;
+        padding:0;
+        border-radius:0;
+        background:#fff;
+      }
+      .qr-only-box{width:auto;height:auto}
+      @page{size:auto;margin:10mm}
     }
   </style>
 </head>
 <body><div id="app"></div>
 <script type="module">
   import { mountShell } from './auth-guard.js';
-  import { getCardById, getCardByCode, ensureQrCodeLib, escapeHtml, toDateValue } from './app.js';
+  import { getCardById, getCardByCode, ensureQrCodeLib, escapeHtml } from './app.js';
 
-  const ctx = await mountShell('print-card-template.html','Print Card Template','พรีวิวการ์ดจริง front/back และพร้อมพิมพ์หรือ Save as PDF');
+  const ctx = await mountShell('print-card-template.html','Print QR','แสดง QR Code สำหรับพิมพ์อย่างเดียว');
   if (!ctx) throw new Error('auth required');
 
   const el = document.getElementById('pageContent');
   el.innerHTML = `
-    <div id="printToolbar" class="card no-print value-print-toolbar">
+    <div id="printToolbar" class="card no-print qr-print-toolbar">
       <div class="btn-row">
-        <button class="btn primary" id="printBtn" type="button">Print / Save PDF</button>
+        <button class="btn primary" id="printBtn" type="button">Print QR / Save PDF</button>
         <a class="btn secondary" id="detailBtn" href="search-card.html">Back to Search</a>
       </div>
-      <div id="printFeedback" class="helper" style="margin-top:8px">Loading card...</div>
+      <div id="printFeedback" class="helper" style="margin-top:8px">Loading QR...</div>
     </div>
-    <div id="printStage" class="value-print-stage"></div>`;
+    <div id="printStage" class="qr-print-stage"></div>`;
 
   const params = new URLSearchParams(location.search);
   const id = params.get('id');
@@ -122,102 +90,30 @@
   const printFeedbackEl = document.getElementById('printFeedback');
   const detailBtnEl = document.getElementById('detailBtn');
 
-  function numberFormat(v){ return new Intl.NumberFormat('en-US').format(Number(v || 0)); }
-
-  function resolvePlan(card){
-    const sold = Number(card.sold_price || 0);
-    const face = Number(card.face_value || 0);
-    if (sold === 500 || face === 600) {
-      return { purchaseAmount: 500, voucherValue: 600, frontAsset: 'assets/voucher-value/front-500.png' };
-    }
-    if (sold === 1000 || face === 1200) {
-      return { purchaseAmount: 1000, voucherValue: 1200, frontAsset: 'assets/voucher-value/front-1000.png' };
-    }
-    return {
-      purchaseAmount: sold > 0 ? sold : face,
-      voucherValue: face > 0 ? face : sold,
-      frontAsset: ''
-    };
-  }
-
   async function render() {
     try {
       const card = id ? await getCardById(id) : await getCardByCode(code || '');
       if (!card) throw new Error('Card not found.');
       detailBtnEl.href = `card-detail.html?id=${encodeURIComponent(card.id)}`;
       await ensureQrCodeLib();
-
-      const plan = resolvePlan(card);
-      const purchaseText = `THB ${numberFormat(plan.purchaseAmount)}`;
-      const valueText = `THB ${numberFormat(plan.voucherValue)}`;
-      const validText = escapeHtml(toDateValue(card.valid_until) || 'Until fully redeemed');
-      const outletText = escapeHtml(card.outlet_scope || 'Aroonsawat');
-      const serialText = escapeHtml(card.card_serial || card.card_code || '-');
-      const bgStyle = plan.frontAsset ? `background-image:url('${plan.frontAsset}')` : '';
-
       printStageEl.innerHTML = `
-        <div class="value-print-shell">
-          <div class="value-card-panel">
-            <div class="value-card-label">FRONT</div>
-            <div class="value-card front" style="${bgStyle}">
-              ${plan.frontAsset ? '' : '<div class="front-fallback"></div>'}
-              <div class="front-price-badge"><strong>${escapeHtml(purchaseText)}</strong><span>VOUCHER</span></div>
+        <div class="qr-only-shell">
+          <div>
+            <div class="qr-only-card">
+              <div id="qrOnly" class="qr-only-box"></div>
             </div>
-          </div>
-          <div class="value-card-panel">
-            <div class="value-card-label">BACK</div>
-            <div class="value-card back">
-              <div class="back-main">
-                <h2 class="back-title">Terms &amp; Conditions</h2>
-                <ul class="back-terms">
-                  <li>Valid at Aroonsawat Café (We Proudly Serve Starbucks®) only</li>
-                  <li>Buy THB ${numberFormat(plan.purchaseAmount)} = THB ${numberFormat(plan.voucherValue)}</li>
-                  <li>Valid for 1 month from purchase date</li>
-                  <li>Present card &amp; scan QR before ordering</li>
-                  <li>Usable until balance is fully redeemed (within validity)</li>
-                  <li>Non-refundable, non-transferable, no cash value</li>
-                  <li>Lost/damaged card will not be replaced</li>
-                  <li>Not combinable with other promotions</li>
-                  <li>Aroonsawat Café reserves the right to amend without prior notice</li>
-                </ul>
-                <div class="back-contact">
-                  <div class="left">
-                    <div><strong>f</strong> &nbsp;Laya Resort Phuket</div>
-                    <div><strong>◎</strong> &nbsp;@Laya Resort Phuket</div>
-                  </div>
-                  <div class="right">
-                    <div><strong>+66 (0) 7632 8888</strong></div>
-                    <div><strong>fb@layaresortphuket.com</strong></div>
-                    <div><strong>www.layaresortphuket.com/layaresortphuket</strong></div>
-                  </div>
-                </div>
-              </div>
-              <div class="back-right">
-                <div class="value-box">
-                  <span class="small">VOUCHER VALUE:</span>
-                  <div class="line"></div>
-                  <span class="big">${escapeHtml(valueText)}</span>
-                </div>
-                <div class="back-qr-wrap">
-                  <div id="qrBack" class="back-qr"></div>
-                  <div class="back-value-circle"><div class="thb">THB</div><div class="num">${escapeHtml(String(plan.voucherValue))}</div></div>
-                </div>
-                <div class="back-serial">${serialText}</div>
-              </div>
-            </div>
+            <div class="qr-only-meta">${escapeHtml(card.card_code || '-')}</div>
           </div>
         </div>`;
-
-      new window.QRCode(document.getElementById('qrBack'), {
+      new window.QRCode(document.getElementById('qrOnly'), {
         text: card.card_code || '',
-        width: 138,
-        height: 138,
+        width: 260,
+        height: 260,
         correctLevel: window.QRCode.CorrectLevel.H
       });
-
-      printFeedbackEl.textContent = `Ready to print ${card.card_code}. Package: Buy THB ${numberFormat(plan.purchaseAmount)} = THB ${numberFormat(plan.voucherValue)}.`;
+      printFeedbackEl.textContent = `Ready to print QR for ${card.card_code}.`;
     } catch (err) {
-      printStageEl.innerHTML = `<div class="card"><h3>Print template load failed</h3><div class="helper">${escapeHtml(err.message || 'Unknown error')}</div></div>`;
+      printStageEl.innerHTML = `<div class="card"><h3>Print QR load failed</h3><div class="helper">${escapeHtml(err.message || 'Unknown error')}</div></div>`;
       printFeedbackEl.textContent = 'Load failed';
     }
   }

@@ -82,8 +82,8 @@
             ${roleCan(ctx.profile.role, 'sell') && card.status !== 'disabled' ? `<button class="btn danger" id="disableBtn" type="button">Disable</button>` : ''}
             ${roleCan(ctx.profile.role, 'sell') && card.status === 'disabled' ? `<button class="btn primary" id="enableBtn" type="button">Enable</button>` : ''}
             ${roleCan(ctx.profile.role, 'sell') ? `<button class="btn secondary" id="adjustPlusBtn" type="button">Adjustment +</button><button class="btn secondary" id="adjustMinusBtn" type="button">Adjustment -</button>` : ''}
-            ${roleCan(ctx.profile.role, 'print') ? `<a class="btn secondary" href="print-card-template.html?id=${encodeURIComponent(card.id)}" target="_blank" rel="noopener noreferrer">Print Card</a>` : ''}
-            ${roleCan(ctx.profile.role, 'print') && batch?.batchKey ? `<a class="btn secondary" href="print-batch-9up.html?id=${encodeURIComponent(card.id)}" target="_blank" rel="noopener noreferrer">Print 9 / A4</a>` : ''}
+            ${roleCan(ctx.profile.role, 'print') ? `<a class="btn secondary" href="print-card-template.html?id=${encodeURIComponent(card.id)}" target="_blank" rel="noopener noreferrer">Print QR</a>` : ''}
+            
             ${roleCan(ctx.profile.role, 'transactions') && lastVoidable ? `<button class="btn secondary" id="voidLastDebitBtn" type="button">Void Last Debit</button>` : ''}
           </div>
           <div id="actionFeedback" class="helper" style="margin-top:10px"></div>
