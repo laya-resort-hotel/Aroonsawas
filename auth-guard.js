@@ -168,3 +168,50 @@ export async function mountShell(activePage, pageTitle, pageDesc) {
 
   return ctx;
 }
+
+// Compatibility helpers for legacy pages and login redirect.
+// These exports prevent blank screens when older pages import them.
+export function buildLoginUrl(nextPath = "") {
+  const params = new URLSearchParams();
+  params.set("login", "1");
+  const raw = String(nextPath || "").trim();
+  if (raw && raw !== "index.html") {
+    try {
+      const url = new URL(raw, location.href);
+      if (url.origin === location.origin) {
+        const safePath = `${url.pathname.split('/').pop() || 'index.html'}${url.search}${url.hash}`;
+        if (!/^javascript:/i.test(safePath)) params.set("next", safePath);
+      }
+    } catch {
+      if (!/^javascript:/i.test(raw) && !/^https?:\/\//i.test(raw)) {
+        params.set("next", raw);
+      }
+    }
+  }
+  return `index.html?${params.toString()}`;
+}
+
+export function renderNav(profile = {}) {
+  const nav = document.getElementById("navMenu");
+  if (!nav) return;
+
+  const role = profile?.role || "staff";
+  const managerLike = ["supervisor", "manager", "admin"].includes(role);
+  const links = [
+    ["index.html", "Home", true],
+    ["redeem.html", "Redeem", ["staff", "supervisor", "manager", "admin"].includes(role)],
+    ["search.html", "Search", managerLike],
+    ["frontdesk.html", "Front Desk", managerLike],
+    ["issue.html", "Issue", managerLike],
+    ["dashboard.html", "Sales Dashboard", roleCan(role, "dashboard")],
+    ["scan-deduct.html", "Scan / Deduct", roleCan(role, "scan")],
+    ["transactions.html", "Transactions", roleCan(role, "transactions")],
+    ["settings.html", "Settings", roleCan(role, "settings")]
+  ].filter(([, , allowed]) => allowed);
+
+  const current = location.pathname.split("/").pop() || "index.html";
+  nav.innerHTML = links.map(([href, label]) => {
+    const active = current === href ? " active" : "";
+    return `<a href="${href}" class="${active}">${label}</a>`;
+  }).join("");
+}
